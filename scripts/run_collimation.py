@@ -593,7 +593,7 @@ def generate_xpart_particles(config_dict, line, ref_particle, capacity):
                                                      name=element,
                                                      num_particles=num_particles,
                                                      side=dist_params['side'],
-                                                     pencil_spread=dist_params['pencil_spread'], # pencil spread is what I usually call imapct parameter
+                                                     pencil_spread=dist_params['pencil_spread'], # pencil spread is what I usually call impact parameter
                                                      impact_parameter=0,
                                                      sigma_z=dist_params['sigma_z'],
                                                      twiss=twiss,
