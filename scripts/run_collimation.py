@@ -1156,12 +1156,13 @@ def execute(config_file_path, config_dict):
 
 
 def merge(directory, output_file, match_pattern='*part.hdf*', load_particles=True):
+    output_file = Path(output_file)
+
     t0 = time.time()
 
     part_merged, lmd_merged, dirs_visited, files_loaded = merge_output.load_output(directory, output_file, match_pattern=match_pattern, load_particles=load_particles)
 
-    _save_particles_hdf(particles=part_merged,
-                        lossmap_data=lmd_merged, filename=output_file)
+    _save_particles_hdf(output_file, part_merged, lmd_merged)
 
     print('Directories visited: {}, files loaded: {}'.format(
         dirs_visited, files_loaded))
