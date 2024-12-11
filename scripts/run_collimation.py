@@ -987,6 +987,7 @@ def submit_jobs(config_dict, config_file):
 
         print('Done!')
 
+
 def submit_local_jobs(config_file_path, config_dict):
     if subprocess.run("parallel --version", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
         raise RuntimeError("GNU parallel is not installed or not available in the PATH.")
@@ -1016,8 +1017,8 @@ def submit_local_jobs(config_file_path, config_dict):
         f.write('#!/bin/bash\n\n')
         f.write('start_time=$(date +%s)\n')
         f.write(
-            f"/usr/bin/time -v seq 0 {n_jobs - 1} | parallel -j {max_parallel_jobs} "
-            f"'python {python_script} --run {working_dir_path}/Job.{{}}/{config_file_path.name} > {working_dir_path}/Job.{{}}/log.txt' &\n"
+            f"/usr/bin/time seq 0 {n_jobs - 1} | parallel -j {max_parallel_jobs} "
+            f"'python {python_script} --run {working_dir_path}/Job.{{}}/{config_file_path.name} > {working_dir_path}/Job.{{}}/log.txt'\n"
         )
         f.write('end_time=$(date +%s)\n')
         f.write('echo "Total runtime: $((end_time-start_time)) s"\n')
