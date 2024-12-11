@@ -427,11 +427,7 @@ def load_and_process_line(config_dict):
                                                 nemitt_x=emittance['x'],
                                                 nemitt_y=emittance['y'])
     
-    colldb.install_geant4_collimators(verbose=False,
-                                      line=line,
-                                      bdsim_config_file=inp['bdsim_config'],
-                                      relative_energy_cut=run['energy_cut'],
-                                      random_seed=run['seed'])
+    colldb.install_geant4_collimators(line=line, verbose=True)
 
     line.build_tracker()
     _configure_tracker_radiation(line, radiation_mode, for_optics=True)
