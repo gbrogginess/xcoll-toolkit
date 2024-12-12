@@ -423,7 +423,13 @@ def load_and_process_line(config_dict):
     line.build_tracker()
     line.discard_tracker()    
 
-    colldb = xc.CollimatorDatabase.from_json(inp['collimator_file'],
+    # TODO: make this more elegant
+    if inp['collimator_file'].endswith('.json'):
+        colldb = xc.CollimatorDatabase.from_json(inp['collimator_file'],
+                                                    nemitt_x=emittance['x'],
+                                                    nemitt_y=emittance['y'])
+    elif inp['collimator_file'].endswith('.dat'):
+        colldb = xc.CollimatorDatabase.from_SixTrack(inp['collimator_file'],
                                                 nemitt_x=emittance['x'],
                                                 nemitt_y=emittance['y'])
     
