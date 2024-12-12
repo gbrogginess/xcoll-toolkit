@@ -1160,7 +1160,18 @@ def merge(directory, output_file, match_pattern='*part.hdf*', load_particles=Tru
 
     t0 = time.time()
 
-    part_merged, lmd_merged, dirs_visited, files_loaded = merge_output.load_output(directory, output_file, match_pattern=match_pattern, load_particles=load_particles)
+    if match_pattern == '*part.hdf*':
+        part_merged, lmd_merged, dirs_visited, files_loaded = merge_output.load_output(directory,
+                                                                                       output_file,
+                                                                                       match_pattern=match_pattern,
+                                                                                       load_particles=load_particles,
+                                                                                       load_lossmap=True)
+    elif match_pattern == '*photons.hdf*':
+        part_merged, lmd_merged, dirs_visited, files_loaded = merge_output.load_output(directory,
+                                                                                       output_file,
+                                                                                       match_pattern=match_pattern,
+                                                                                       load_particles=load_particles,
+                                                                                       load_lossmap=False)
 
     _save_particles_hdf(output_file, part_merged, lmd_merged)
 
@@ -1195,8 +1206,12 @@ def main():
         match_pattern = '*part.hdf*'
         output_file = 'part_merged.hdf'
         merge(sys.argv[2], output_file, match_pattern=match_pattern, load_particles=True)
+    elif sys.argv[1] == '--merge_photons':
+        match_pattern = '*photons.hdf*'
+        output_file = 'photons_merged.hdf'
+        merge(sys.argv[2], output_file, match_pattern=match_pattern, load_particles=True)
     else:
-        raise ValueError('The mode must be one of --run, --submit, --submit_local, --merge')
+        raise ValueError('The mode must be one of --run, --submit, --submit_local, --merge, --merge_photons')
 
 
 if __name__ == '__main__':

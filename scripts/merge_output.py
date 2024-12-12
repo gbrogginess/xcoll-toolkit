@@ -9,7 +9,12 @@ from multiprocessing import Pool
 
 
 def _read_particles_hdf(filename):
-    return pd.read_hdf(filename, key='particles')
+    if filename.endswith('part.hdf'):
+        key = 'particles'
+    elif filename.endswith('photons.hdf'):
+        key = 'photons'
+        
+    return pd.read_hdf(filename, key=key)
 
 
 def _load_lossmap_hdf(filename):
