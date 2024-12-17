@@ -39,12 +39,20 @@ to_int = lambda x: int(float(x))
 XTRACK_TWISS_KWARGS = {}
 
 
+BEAMGAS_OPTIONS_SCHEMA = Schema({'eBrem': Use(bool),
+                                 Optional('eBrem_energy_cut'): Use(to_float),
+                                 'CoulombScat': Use(bool),
+                                 Optional('theta_min'): Use(to_float),
+                                 Optional('theta_max'): Use(to_float)
+                                 })
+
 INPUT_SCHEMA = Schema({
     'machine': str,
     'xtrack_line': And(str, os.path.exists),
     'collimator_file': And(str, os.path.exists),
     'bdsim_config': And(str, os.path.exists),
     'gas_density_profile': And(str, os.path.exists),
+    'beamgas_options': BEAMGAS_OPTIONS_SCHEMA,
     Optional('material_rename_map', default={}): Schema({str: str}),
 })
 
@@ -634,7 +642,7 @@ def prepare_lossmap(particles, line, s0, binwidth, weights):
     return lm_dict
 
 
-def run(config_file_path, config_dict, line, particles, ref_part, start_element, s0):
+def run(config_file_path, config_dict, line, bgman, particles, ref_part, start_element, s0):
     radiation_mode = config_dict['run']['radiation']
     beamstrahlung_mode = config_dict['run']['beamstrahlung']
     bhabha_mode = config_dict['run']['bhabha']
@@ -707,13 +715,12 @@ def run(config_file_path, config_dict, line, particles, ref_part, start_element,
     df_impacts.to_csv(fpath, index=False)
     del df_impacts
 
-    # # Save n_interactions_dict
-    # # import json
-    # n_interactions_dict = get_n_interactions_dict(line)
-    # # TODO: Put the saving in a dedicated function
-    # fpath = output_dir / 'n_interactions.json'
-    # with open(fpath, 'w') as fp:
-    #     json.dump(n_interactions_dict, fp)
+    # Save beam_gas_log
+    beam_gas_log = bgman.df_interactions_log
+    del bgman
+    fpath = output_dir / 'beamgas_log.json'
+    beam_gas_log.to_json(fpath, orient='records', indent=2)
+    del beam_gas_log
 
     aper_interp = config_dict['run']['aperture_interp']
     # Make xcoll loss map
@@ -753,7 +760,7 @@ def execute(config_file_path, config_dict):
 
     bgman.initialise_particles(particles)
 
-    run(config_file_path, config_dict, line, particles, ref_part, start_elem, s0)
+    run(config_file_path, config_dict, line, bgman, particles, ref_part, start_elem, s0)
 
 
 @contextmanager

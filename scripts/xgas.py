@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import xtrack as xt
 import xcoll as xc
 import periodictable as pt
@@ -300,7 +301,8 @@ class BremsstrahlungCalculator:
 
 
 class BeamGasManager():
-    interacted_part_ids_log = []
+    log_interacted_part_ids = []
+    df_interactions_log = pd.DataFrame(columns=['name', 's', 'particle_id', 'interaction'])
 
     def __init__(self, density_df, q0, p0c, eBrem, CoulombScat, eBrem_energy_cut=10e3, theta_lim=(1e-7, 50e-3), interaction_length_is_n_turns=1):
         self.rng = np.random.default_rng()
@@ -388,6 +390,8 @@ class BeamGasManager():
             local_gas_params = self.cross_section_biasing(line, local_gas_params)
             dict_bg_elems[f'beam_gas_{index}'] = BeamGasElement(ds_list[index], local_gas_params, self)
             s.append(values.s)
+        
+        BeamGasManager.df_interactions_log['name'] = list(dict_bg_elems.keys())
 
         coll_idx = []
         for idx, elem in enumerate(line.elements):
@@ -420,13 +424,15 @@ class BeamGasManager():
                     s[idx] = s_closest - tolerance
                 elif argmin == 1:
                     s[idx] = s_closest + tolerance
+
+        BeamGasManager.df_interactions_log['s'] = s
         
         elements_to_insert = [(s_elem, [(key, dict_bg_elems[key])]) for s_elem, key in zip(s, dict_bg_elems.keys())]
 
         line._insert_thin_elements_at_s(elements_to_insert)
 
 
-    def update_interaction_dist(self, mfp_step, n_interactions):
+    def update_interaction_dist(self, mfp_step):
         if not self.part_initialised:
             raise Exception('Need to initialise the BeamGas manager with particles'
                             'before tracking with BeamGasManager.initialise_particles()')
@@ -441,11 +447,14 @@ class BeamGasManager():
             (self.particles.state > 0) & 
             (self.particles.parent_particle_id == self.particles.particle_id) & 
             np.in1d(self.particles.particle_id, np.array(list(self.interaction_dist.keys()))[candidate_interacting_ids]) & 
-            ~np.isin(self.particles.particle_id, BeamGasManager.interacted_part_ids_log)
+            ~np.isin(self.particles.particle_id, BeamGasManager.log_interacted_part_ids)
         )
 
         interacting_part_ids = self.particles.particle_id[interacting_part_mask]
-        BeamGasManager.interacted_part_ids_log.extend(interacting_part_ids)
+        BeamGasManager.log_interacted_part_ids.extend(interacting_part_ids)
+
+        idx_bg_elem = BeamGasManager.df_interactions_log['particle_id'].isna().idxmax()
+        BeamGasManager.df_interactions_log.at[idx_bg_elem, 'particle_id'] = interacting_part_ids.tolist()
 
         noninteracting_part_mask = ~interacting_part_mask & (self.particles.state >0) & (self.particles.parent_particle_id == self.particles.particle_id)
         noninteracting_part_ids = self.particles.particle_id[noninteracting_part_mask]
@@ -508,20 +517,19 @@ class BeamGasElement():
         self.mfp_tot = 1 / sum([1/_mfp for _mfp in self.mfp])
         self.int_prob = [self.mfp_tot / _mfp for _mfp in self.mfp]
         self.mfp_step = self.ds / self.mfp_tot
-        self.n_interactions = 0
         self.manager = manager
-
-    def update_n_interactions(self, n_interactions):
-        self.n_interactions += n_interactions
 
     def track(self, particles):
         # Which particles are interacting
-        interacting_mask = self.manager.update_interaction_dist(self.mfp_step, self.n_interactions)
+        interacting_mask = self.manager.update_interaction_dist(self.mfp_step)
         n_interactions = sum(interacting_mask)
-        self.update_n_interactions(n_interactions)
+        # self.update_n_interactions(n_interactions)
 
-        # Get the type of interactons and apply the effect
+        # Get the type of interactions and apply the effect
         interactions = self.manager.rng.choice(self.interactions, p=self.int_prob, size=n_interactions)
+
+        idx_bg_elem = self.manager.df_interactions_log['interaction'].isna().idxmax()
+        self.manager.df_interactions_log.at[idx_bg_elem, 'interaction'] = interactions.tolist()
 
         dpx, dpy, delta = self.manager.draw_angles_and_delta(interactions, n_interactions)
         particles.px[interacting_mask] += dpx
