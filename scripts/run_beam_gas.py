@@ -499,7 +499,9 @@ def load_and_process_line(config_dict):
     print('Done installing beam-gas elements.')
     # insert_bg_elems_bounding_apertures(line)
 
-    # insert_missing_bounding_apertures(line)
+    # TODO: make this more general (seems to be required only when using thick lines)
+    if 'superkekb' in inp['machine']:
+        insert_missing_bounding_apertures(line)
     # aper_check = line.check_aperture()
 
     ##########################################################################################################
