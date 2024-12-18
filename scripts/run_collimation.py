@@ -70,6 +70,7 @@ MATCHED_SCHM = Schema({'type': And(str, lambda s: s in ('matched_beam',)),
 
 DIST_SCHEMA = Schema({'source': And(str, lambda s: s in ('internal', 'xsuite')),
              Optional('start_element', default=None): Or(str.lower, None),
+             Optional('weight', default=False): Use(bool),
              Optional('initial_store_file', default=None): Or(str.lower, None),
         'parameters': Or(XSUITE_DIST_SCHEMA,
                          MATCHED_SCHM,
@@ -613,7 +614,7 @@ def generate_xpart_particles(config_dict, line, ref_particle, capacity):
         raise Exception('Cannot process beam distribution')
 
     # Add weights for ICS simulations with Xcain
-    if dist_params.get('weight', None) is not None:
+    if dist_params.get('weight', False):
         KB_FCCEE_Z = 2.14E+11 # FCC-ee Z bunch population
         weight = np.ones(capacity) * KB_FCCEE_Z / num_particles
         particles.weight = weight
