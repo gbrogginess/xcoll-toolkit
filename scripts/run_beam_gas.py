@@ -488,6 +488,9 @@ def load_and_process_line(config_dict):
     # Beam-gas (via Xgas Python module)
     ##########################################################################################################
 
+    # Beam-gas options dictionary
+    beamgas_opt = inp['beamgas_options']
+
     # Insert beam-gas elements
     print('Loading gas density profile...')
     density_df = pd.read_csv(inp['gas_density_profile'], sep='\t')
@@ -495,10 +498,10 @@ def load_and_process_line(config_dict):
     # Initialise beam-gas manager
     print('Initialising beam-gas manager...')
     bgman = xg.BeamGasManager(density_df, q0, p0,
-                              eBrem=True, # Bremsstrahlung on
-                              eBrem_energy_cut=20e6, # Bremsstrahlung gammas low energy cut [eV]
-                              CoulombScat=False, # Coulomb scattering off
-                              theta_lim=(1e-4, 0.02) # Coulomb scattering angle limits
+                              eBrem=beamgas_opt['eBrem'], # Bremsstrahlung on
+                              eBrem_energy_cut=beamgas_opt['eBrem_energy_cut'], # Bremsstrahlung gammas low energy cut [eV]
+                              CoulombScat=beamgas_opt['CoulombScat'], # Coulomb scattering off
+                              theta_lim=(beamgas_opt['theta_min'], beamgas_opt['theta_max']) # Coulomb scattering angle limits
                               )
     print('Done initialising beam-gas manager.')
     # Install beam-gas elements
