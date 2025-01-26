@@ -174,7 +174,7 @@ def insert_missing_bounding_apertures(line):
     # TODO: fix this
     chicane_aper_names = []
     for (ii, jj), kk in zip(enumerate(idx), range(len(elems))):
-        if elem_names[kk].startswith(('bp2nrp.', 'bp1nrp.')):
+        if elem_names[kk].startswith(('bp2nrp.', 'bp1nrp.', '-bp1nrp.', '-bp2nrp.')):
             # Chicane need separate treatment
             arc_aper = xt.LimitEllipse(a=0.45, b=0.45)
             line.insert_element(at=jj+1,
@@ -470,9 +470,14 @@ def load_and_process_line(config_dict):
     line.build_tracker()
     line.discard_tracker()  
 
-    colldb = xc.CollimatorDatabase.from_SixTrack(inp['collimator_file'],
-                                                nemitt_x=emittance['x'],
-                                                nemitt_y=emittance['y'])
+    if inp['collimator_file'].endswith('.dat'):
+        colldb = xc.CollimatorDatabase.from_SixTrack(inp['collimator_file'],
+                                                    nemitt_x=emittance['x'],
+                                                    nemitt_y=emittance['y'])
+    elif inp['collimator_file'].endswith('.json'):
+        colldb = xc.CollimatorDatabase.from_json(inp['collimator_file'],
+                                                 nemitt_x=emittance['x'],
+                                                 nemitt_y=emittance['y'])
     
     colldb.install_geant4_collimators(line=line, verbose=True)
     
