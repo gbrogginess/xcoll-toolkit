@@ -2,7 +2,6 @@ import xtrack as xt
 import xpart as xp
 import xcoll as xc
 import numpy as np
-from scipy.stats import gaussian_kde
 from scipy.integrate import quad
 from scipy.special import i0
 from scipy.constants import physical_constants
@@ -16,11 +15,10 @@ class LorentzVector:
     def __init__(self, px=0, py=0, pz=0, e=0):
         self.vec = np.array([px, py, pz, e])
 
+
     def momvec(self):
         return np.array([self.vec[0], self.vec[1], self.vec[2]])
-    
-    def etot(self):
-        return self.vec[3]
+
 
     def boost_vector(self):
         """Compute the boost vector for this Lorentz vector (momentum/energy if energy != 0)."""
@@ -29,41 +27,88 @@ class LorentzVector:
         else:
             return np.array([0, 0, 0])
 
-    def boost(self, bst):
-        """Boost this Lorentz vector by the given boost vector."""
-        bx, by, bz = bst
-        b2 = bx**2 + by**2 + bz**2
-        gamma = 1.0 / np.sqrt(1 - b2)
-        bp = bx * self.vec[0] + by * self.vec[1] + bz * self.vec[2]
-        gamma2 = (gamma - 1.0) / b2 if b2 > 0 else 0.0
+    # def boost(self, bst):
+    #     """Boost this Lorentz vector by the given boost vector."""
+    #     bx, by, bz = bst
+    #     b2 = bx**2 + by**2 + bz**2
+    #     gamma = np.sqrt(1 - b2)**-1
+    #     bp = bx * self.vec[0] + by * self.vec[1] + bz * self.vec[2]
 
-        # Lorentz transformation equations
-        self.vec[0] += gamma2 * bp * bx + gamma * bx * self.vec[3]
-        self.vec[1] += gamma2 * bp * by + gamma * by * self.vec[3]
-        self.vec[2] += gamma2 * bp * bz + gamma * bz * self.vec[3]
-        self.vec[3] = gamma * (self.vec[3] + bp)
+    #     # Build the Lorentz transformation matrix
+    #     LL = np.array([
+    #         [gamma, gamma*bx, gamma*by, gamma*bz],
+    #         [gamma*bx, 1+(gamma-1)*bz**2 / b2, (gamma-1)*bx*by / b2, (gamma-1)*bx*bz / b2],
+    #         [gamma*by, (gamma-1)*by*bz / b2, 1+(gamma-1)*by**2 / b2, (gamma-1)*by*bz / b2],
+    #         [gamma*bz, (gamma-1)*bx*bz / b2, (gamma-1)*by*bz / b2, 1+(gamma-1)*bz**2 / b2]
+    #     ])
+
+    #     # Apply the Lorentz transformation
+    #     boosted_vec = LL @ self.vec
+
+    #     return LorentzVector(boosted_vec[0], boosted_vec[1], boosted_vec[2], boosted_vec[3])
+    
+
+    def lab_to_cm(self, bst):
+        bx, by, bz = bst
+        b2 = np.linalg.norm(bst)**2
+        gamma = np.sqrt(1 - b2)**-1
+
+        bp = bx * self.px + by * self.py + bz * self.pz
+
+        qx = self.px + (gamma - 1) * bp / b2 * bx - gamma * self.e * bx
+        qy = self.py + (gamma - 1) * bp / b2 * by - gamma * self.e * by
+        qz = self.pz + (gamma - 1) * bp / b2 * bz - gamma * self.e * bz
+
+        q2 = qx**2 + qy**2 + qz**2
+        e = np.sqrt(q2 + ELECTRON_MASS_EV**2)
+
+        return LorentzVector(qx, qy, qz, e)
+
 
     def rotate(self, theta, phi):
         """Rotate the spatial components by angles theta (polar) and phi (azimuthal)."""
-        # Rotation around the z-axis by phi
-        R_z = np.array([
-            [np.cos(phi), -np.sin(phi), 0],
-            [np.sin(phi), np.cos(phi), 0],
-            [0, 0, 1]
-        ])
+        p = self.momvec()
+        p_abs = np.linalg.norm(p)
 
-        # Rotation around the y-axis by theta
-        R_y = np.array([
-            [np.cos(theta), 0, np.sin(theta)],
-            [0, 1, 0],
-            [-np.sin(theta), 0, np.cos(theta)]
-        ])
+        # Compute spherical angles of v0
+        th = np.arccos(self.pz / p_abs)
+        ph = np.arctan2(self.py, self.px)
 
-        # Combine rotations (R_y * R_z)
-        rotation_matrix = R_y @ R_z
+        # Trigonometric terms
+        s1 = np.sin(th)
+        s2 = np.sin(ph)
+        c1 = np.cos(th)
+        c2 = np.cos(ph)
 
-        # Apply the rotation to the spatial components (px, py, pz)
-        self.vec[:3] = rotation_matrix @ self.vec[:3]
+        # Direction cosines of new axis
+        x0 = np.cos(theta)
+        y0 = np.sin(theta) * np.cos(phi)
+        z0 = np.sin(theta) * np.sin(phi)
+
+        # Transformed vector components
+        self.vec[0] = p_abs * (s1 * c2 * x0 - s2 * y0 - c1 * c2 * z0)
+        self.vec[1] = p_abs * (s1 * s2 * x0 + c2 * y0 - c1 * s2 * z0)
+        self.vec[2] = p_abs * (c1 * x0 + s1 * z0)
+
+
+    def cm_to_lab(self, bst):
+        bx, by, bz = bst
+        b2 = np.linalg.norm(bst)**2
+        gamma = np.sqrt(1 - b2)**-1
+
+        bq = bx * self.px + by * self.py + bz * self.pz
+
+        px1 = self.px + gamma * bx * self.e + (gamma - 1) * bq / b2 * bx
+        py1 = self.py + gamma * by * self.e + (gamma - 1) * bq / b2 * by
+        pz1 = self.pz + gamma * bz * self.e + (gamma - 1) * bq / b2 * bz
+        e1 = np.sqrt(px1**2 + py1**2 + pz1**2 + ELECTRON_MASS_EV**2)
+
+        px2 = -self.px + gamma * bx * self.e - (gamma - 1) * bq / b2 * bx
+        py2 = -self.py + gamma * by * self.e - (gamma - 1) * bq / b2 * by
+        pz2 = -self.pz + gamma * bz * self.e - (gamma - 1) * bq / b2 * bz
+        e2 = np.sqrt(px2**2 + py2**2 + pz2**2 + ELECTRON_MASS_EV**2)
+
+        return LorentzVector(px1, py1, pz1, e1), LorentzVector(px2, py2, pz2, e2) 
 
     @property
     def px(self):
@@ -80,6 +125,11 @@ class LorentzVector:
     @property
     def e(self):
         return self.vec[3]
+    
+    @property
+    def beta(self):
+        p_abs = np.linalg.norm(self.momvec())
+        return p_abs / np.sqrt(p_abs**2 + ELECTRON_MASS_EV**2)
     
     @property
     def gamma(self):
@@ -116,20 +166,22 @@ class TouschekCalculator():
         return np.sqrt(p**2 + ELECTRON_MASS_EV**2)
 
 
-    def _compute_pz(self, particles):
-        return np.sqrt((1 + particles.delta)**2 - particles.px**2 - particles.py**2)
+    def _compute_pzeta_from_delta(self, particles):
+        px = particles.px
+        py = particles.py
+        delta = particles.delta
+
+        return np.sqrt((1 + delta)**2 - px**2 - py**2)
 
 
     def _get_momenta(self, particles1, particles2):
-        pz_1 = self._compute_pz(particles1)
-        pz_2 = self._compute_pz(particles2)
+        pz_1 = self._compute_pzeta_from_delta(particles1)
+        pz_2 = self._compute_pzeta_from_delta(particles2)
 
-        p1, p2 = [], []
-        for ii in range(self.npart_over_two):
-            p1.append(particles1.p0c[0] * np.array([particles1.px[ii], particles1.py[ii], pz_1[ii]]))
-            p2.append(particles2.p0c[0] * np.array([particles2.px[ii], particles2.py[ii], pz_2[ii]]))
+        p1 = particles1.p0c[0] * np.column_stack((particles1.px, particles1.py, pz_1))
+        p2 = particles2.p0c[0] * np.column_stack((particles2.px, particles2.py, pz_2))
 
-        return np.array(p1), np.array(p2)
+        return p1, p2
 
 
     def _get_fourmomenta(self, p1, p2):
@@ -142,86 +194,79 @@ class TouschekCalculator():
 
 
     def scatter(self, particles):
+        self.gamma = []
+        self.gamma_cm = []
+
         p0c = self.manager.ref_particle.p0c[0]
+        npart_over_two = self.npart_over_two
 
         p1, p2 = self._get_momenta(particles[0], particles[1])
 
         v1, v2 = self._get_fourmomenta(p1, p2)
 
-        gamma1, gamma2 = [], []
-        for ii in range(self.npart_over_two):
-            gamma1.append(v1[ii].gamma)
-            gamma2.append(v2[ii].gamma)
-        self.gamma.append(np.array(gamma1))
-        self.gamma.append(np.array(gamma2))
+        vtot = np.array([v1[ii] + v2[ii] for ii in range(len(v1))])
+        boost_to_cm = np.array([v.boost_vector() for v in vtot])
 
-        # Step 1: Calculate the total four-vector in the lab frame
-        vtot = []
-        for ii in range(len(v1)):
-            vtot.append(v1[ii] + v2[ii])
+        gamma = []
+        for ii in range(npart_over_two):
+            b2 = np.linalg.norm(boost_to_cm[ii])**2
+            gamma.append(np.sqrt(1 - b2)**-1)
+        self.gamma.extend([np.array(gamma), np.array(gamma)])
+        
+        q = []
+        for ii in range(npart_over_two):
+            q.append(v1[ii].lab_to_cm(boost_to_cm[ii]))
 
-        # Step 2: Compute the boost vector to the center-of-mass frame
-        boost_to_cm = []
-        for ii in range(len(vtot)):
-            boost_to_cm.append(vtot[ii].boost_vector())
+        gamma_cm = np.array([qq.gamma for qq in q])
 
-        for ii in range(self.npart_over_two):
-            v1[ii].boost(-boost_to_cm[ii])
-            v2[ii].boost(-boost_to_cm[ii])
-
-        gamma1_cm, gamma2_cm = [], []
-        for ii in range(self.npart_over_two):
-            gamma1_cm.append(v1[ii].gamma)
-            gamma2_cm.append(v2[ii].gamma)
-        self.gamma_cm.append(np.array(gamma1_cm))
-        self.gamma_cm.append(np.array(gamma2_cm))
+        self.gamma_cm.extend([gamma_cm, gamma_cm])
 
         # Sample theta and phi in the cm frame
         self.theta_cm = np.random.uniform(0, np.pi/2, self.npart_over_two)
-        phi_cm = np.random.uniform(0, 2*np.pi, self.npart_over_two)
-
-        self.moller_dcs = self._compute_moller_dcs(self.theta_cm)
+        phi_cm = np.random.uniform(0, np.pi, self.npart_over_two)
 
         # Apply the scattering angle
-        for ii, theta, phi in zip(range(self.npart_over_two), self.theta_cm, phi_cm):
-            v1[ii].rotate(theta, phi)
-            v2[ii].rotate(theta, phi)
+        for ii in range(npart_over_two):
+            q[ii].rotate(self.theta_cm[ii], phi_cm[ii])
 
         # Boost back to the lab frame
-        for ii in range(self.npart_over_two):
-            v1[ii].boost(boost_to_cm[ii])
-            v2[ii].boost(boost_to_cm[ii])
+        for ii in range(npart_over_two):
+            v1[ii], v2[ii] = q[ii].cm_to_lab(boost_to_cm[ii])
 
-        particles[0].px = [v1[ii].px / p0c for ii in range(self.npart_over_two)]
-        particles[0].py = [v1[ii].py / p0c for ii in range(self.npart_over_two)]
-        particles[0].delta = [(np.sqrt(v1[ii].px**2 + v1[ii].py**2 + v1[ii].pz**2) - p0c) / p0c for ii in range(self.npart_over_two)]
+        # Compute Moller DCS
+        self.moller_dcs = self._compute_moller_dcs(self.theta_cm)
 
-        particles[1].px = [v2[ii].px / p0c for ii in range(self.npart_over_two)]
-        particles[1].py = [v2[ii].py / p0c for ii in range(self.npart_over_two)]
-        particles[1].delta = [(np.sqrt(v2[ii].px**2 + v2[ii].py**2 + v2[ii].pz**2) - p0c) / p0c for ii in range(self.npart_over_two)]
+        particles[0].px = np.array([v1[ii].px / p0c for ii in range(self.npart_over_two)])
+        particles[0].py = np.array([v1[ii].py / p0c for ii in range(self.npart_over_two)])
+        particles[0].delta = np.array([(np.sqrt(v1[ii].px**2 + v1[ii].py**2 + v1[ii].pz**2) - p0c) / p0c 
+                                    for ii in range(self.npart_over_two)])
+        
+        particles[1].px = np.array([v2[ii].px / p0c for ii in range(self.npart_over_two)])
+        particles[1].py = np.array([v2[ii].py / p0c for ii in range(self.npart_over_two)])
+        particles[1].delta = np.array([(np.sqrt(v2[ii].px**2 + v2[ii].py**2 + v2[ii].pz**2) - p0c) / p0c 
+                                    for ii in range(self.npart_over_two)])
 
         self.particles = particles
 
 
     def _compute_moller_dcs(self, theta_cm):
         def _moller_dcs(gamma_cm, beta_cm, theta_cm):
-            return CLASSICAL_ELECTRON_RADIUS**2  / 4 * gamma_cm**-2 * ((1 + beta_cm**-2)**2 * (4 - 3*np.sin(theta_cm)**2) * np.sin(theta_cm)**-4 + 4*np.sin(theta_cm)**-2 + 1)
+            return CLASSICAL_ELECTRON_RADIUS**2 / (4 * gamma_cm**2) * ((1 + beta_cm**-2)**2 * (4 - 3*np.sin(theta_cm)**2) / (np.sin(theta_cm)**4) + 4/(np.sin(theta_cm)**2) + 1)
 
-        moller_dcs1, moller_dcs2 = [], []
-        for ii in range(self.npart_over_two):
-            gamma_cm = self.gamma_cm[0][ii]
-            beta_cm = np.sqrt(1 - gamma_cm**-2)
-            moller_dcs1.append(_moller_dcs(gamma_cm, beta_cm, theta_cm[ii]))
+        gamma_cm1 = self.gamma_cm[0]
+        gamma_cm2 = self.gamma_cm[1]
 
-            gamma_cm = self.gamma_cm[1][ii]
-            beta_cm = np.sqrt(1 - gamma_cm**-2)
-            moller_dcs2.append(_moller_dcs(gamma_cm, beta_cm, theta_cm[ii]))
+        beta_cm1 = np.sqrt(1 - gamma_cm1**-2)
+        beta_cm2 = np.sqrt(1 - gamma_cm2**-2)
+
+        moller_dcs1 = _moller_dcs(gamma_cm1, beta_cm1, theta_cm)
+        moller_dcs2 = _moller_dcs(gamma_cm2, beta_cm2, theta_cm)
         
-        return [np.array(moller_dcs1), np.array(moller_dcs2)]
+        return [moller_dcs1, moller_dcs2]
 
 
     def _compute_local_scattering_rate(self, phase_space_volume, phase_space_density):
-        n_part = self.manager.n_part
+        npart_over_two = self.manager.n_part / 2
         # v_prime_cm are the velocities of the particles after scattering in the cm frame
         v1_cm, v2_cm = [], []
         for ii in range(self.npart_over_two): 
@@ -230,114 +275,67 @@ class TouschekCalculator():
             beta2_cm = np.sqrt(1 - self.gamma_cm[1][ii]**-2)
             v2_cm.append(beta2_cm * C_LIGHT_VACUUM)
         v_cm = [np.array(v1_cm), np.array(v2_cm)]
-        # moller_dcs is the Moller cross section in the cm frame
-        moller_dcs = self._compute_moller_dcs(self.theta_cm)
 
+        # TODO: Check in detail that V/N with N being the number of scattering events is correct
         local_scattering_rate1, local_scattering_rate2 = [], []
         for ii in range(self.npart_over_two):
-             local_scattering_rate1.append(phase_space_volume / n_part * v_cm[0][ii] * self.gamma[0][ii]**-2 * moller_dcs[0][ii] * np.sin(self.theta_cm[ii]) * phase_space_density[0][ii] * phase_space_density[1][ii])
-             local_scattering_rate2.append(phase_space_volume / n_part * v_cm[1][ii] * self.gamma[1][ii]**-2 * moller_dcs[1][ii] * np.sin(self.theta_cm[ii]) * phase_space_density[0][ii] * phase_space_density[1][ii])
+             local_scattering_rate1.append(phase_space_volume / npart_over_two * v_cm[0][ii] * self.gamma[0][ii]**-2 * self.moller_dcs[0][ii] * np.sin(self.theta_cm[ii]) * phase_space_density[0][ii] * phase_space_density[1][ii])
+             local_scattering_rate2.append(phase_space_volume / npart_over_two * v_cm[1][ii] * self.gamma[1][ii]**-2 * self.moller_dcs[1][ii] * np.sin(self.theta_cm[ii]) * phase_space_density[0][ii] * phase_space_density[1][ii])
 
         return [np.array(local_scattering_rate1), np.array(local_scattering_rate2)]
-    
-
-    def _f_value(self, t, tm, b1, b2):
-        c0 = (
-            (2 + 1 / t)**2 * (t / tm / (1 + t) - 1)
-            + 1 - np.sqrt(tm * (1 + t) / t)
-            - (4 + 1 / t) / (2 * t) * np.log(t / tm / (1 + t))
-        ) * np.sqrt(t / (1 + t))
-
-        c1 = np.exp(-b1 * t)
-        c2 = i0(b2 * t)  # i0: modified Bessel function of the first kind
-
-        result = c0 * c1 * c2
-
-        # Handle overflow/underflow with an approximate equation for modified Bessel function
-        if np.isnan(result) or np.isinf(result):
-            result = c0 * np.exp(b2 * t - b1 * t) / np.sqrt(2 * np.pi * b2 * t)
-
-        return result
 
 
-    def _compute_f_integral_piwinski(self, tm, b1, b2, max_region=30, steps=100, tolerance=1e-5):
-        """
-        Compute the F integral using Simpson's rule.
-        """
-        # NOTE: Simpson's rule has been chosen because it is used in ELEGANT
-        # TODO: Check if better methods exist (maybe exploiting Python capabilities over C)
-        tau0 = tm
-        int_f = 0.0
+    def _compute_piwinski_integral(self, tm, b1, b2):
+        km = np.arctan(np.sqrt(tm))
 
-        for region in range(max_region):
-            if region == 0:
-                h = tau0 * 2.0 / steps
+        def int_piwinski(k, km, B1, B2):
+            """
+            Integrand of the piwinski formula
+            In case the Bessel function has too large value
+            (more than :math:`10^251`) it
+            is substituted by its exponential approximation:
+            :math:`I_0(x)~\frac{\exp(x)}{\sqrt{2 \pi x}}`
+            """
+            t = np.tan(k) ** 2
+            tm = np.tan(km) ** 2
+            fact = (
+                (2 * t + 1) ** 2 * (t / tm / (1 + t) - 1) / t
+                + t
+                - np.sqrt(t * tm * (1 + t))
+                - (2 + 1 / (2 * t)) * np.log(t / tm / (1 + t))
+            )
+            if B2 * t < 500:
+                intp = fact * np.exp(-B1 * t) * i0(B2 * t) * np.sqrt(1 + t)
             else:
-                h = tau0 * 3.0 / steps
+                intp = (
+                    fact
+                    * np.exp(B2 * t - B1 * t)
+                    / np.sqrt(2 * np.pi * B2 * t)
+                    * np.sqrt(1 + t)
+                )
+            return intp
 
-            sum_f = 0.0
+        args = (km, b1, b2)
+        val, _ =  quad(
+            int_piwinski,
+            km,
+            np.pi / 2,
+            args=args,
+            epsabs=1e-16,
+            epsrel=1e-12
+        )
 
-            for step in range(steps + 1):
-                tau = tau0 + h * step
+        piwinski_integral = val * 2
 
-                # Simpson's coefficients
-                if step == 0 or step == steps:
-                    coef = 1.0
-                elif step % 2 == 0:
-                    coef = 2.0
-                else:
-                    coef = 4.0
-
-                fun = self._f_value(tau, tm, b1, b2)
-                sum_f += coef * fun
-
-            tau0 = tau
-            sum_f = (sum_f / 3.0) * h
-            int_f += sum_f
-
-            # Check for convergence
-            if abs(sum_f / int_f) < tolerance:
-                break
-
-            if region == max_region - 1:
-                print(f"**Warning** Integral did not converge until tau= {tau}.")
-
-        return int_f
-
-
-    # def _compute_f_integral_piwinski(self, tm, b1, b2):
-        
-    #     def piwinski_integral_kernel(t):
-    #         try:
-    #             # Original kernel with the modified Bessel function
-    #             kernel = (
-    #                 (2 + 1 / t)**2 * (t / tm / (1 + t) - 1)
-    #                 + 1 - np.sqrt(tm * (1 + t) / t)
-    #                 - (4 + 1 / t) / (2 * t) * np.log(t / tm / (1 + t))
-    #                 * np.exp(-b1 * t) * i0(b2 * t) * np.sqrt(t / (1 + t))
-    #             )
-    #         except OverflowError:
-    #             # Handle overflow error by switching to approximate form
-    #             kernel = (
-    #                 (2 + 1 / t)**2 * (t / tm / (1 + t) - 1)
-    #                 + 1 - np.sqrt(tm * (1 + t) / t)
-    #                 - (4 + 1 / t) / (2 * t) * np.log(t / tm / (1 + t))
-    #                 * np.exp(b2 * t - b1 * t) / np.sqrt(2 * np.pi * b2 * t) * np.sqrt(t / (1 + t))
-    #             )
-    #         return kernel
-
-    #     # Perform numerical integration
-    #     integral, error = quad(piwinski_integral_kernel, tm, np.inf)
-
-    #     return np.sqrt(np.pi * (b1**2 - b2**2)) * tm * integral
+        return piwinski_integral
 
 
     def _compute_piwinski_total_scattering_rate(self, element):
         # TODO: if element is thick, use the average optical functions
-        p0c = self.manager.ref_particle.p0c
+        p0c = self.manager.ref_particle.p0c[0]
         beta0 = self.manager.ref_particle.beta0[0]
         gamma0 = self.manager.ref_particle.gamma0[0]
-        n_part = self.manager.n_part
+        kb = self.manager.kb
         delta_min = self.manager.delta_min
         gemitt_x = self.manager.nemitt_x / beta0 / gamma0
         alfx = self.twiss['alfx', element]
@@ -375,12 +373,11 @@ class TouschekCalculator():
         b2 = np.sqrt(b1**2 - betx**2 * bety**2 * sigma_h**2 / (beta**4 * gamma**4 * sigmab_x**4 * sigmab_y**4 * sigma_delta**2) \
                              * (sigma_x**2 * sigma_y**2 - sigma_delta**4 * dx**2 * dy**2))
 
-        f_integral_piwinski = self._compute_f_integral_piwinski(tm, b1, b2)
+        piwinski_integral = self._compute_piwinski_integral(tm, b1, b2)
 
-        # n_part here needs to be substituted with kn (bunch population)
-        rate = CLASSICAL_ELECTRON_RADIUS**2 * C_LIGHT_VACUUM * n_part \ 
-                / (8*np.pi * gamma**2 * sigma_z * np.sqrt(sigma_x**2 * sigma_y**2 - sigma_delta**4 * dx**2 * dy**2) * tm) \
-                * f_integral_piwinski
+        rate = CLASSICAL_ELECTRON_RADIUS**2 * C_LIGHT_VACUUM * betx * bety * sigma_h * kb**2 \
+                        / (8*np.sqrt(np.pi) * beta**2 * gamma**4 * sigmab_x**2 * sigmab_y**2 * sigma_z * sigma_delta) \
+                        * piwinski_integral
 
         return rate
 
@@ -419,8 +416,10 @@ class TouschekCalculator():
 
         mask1_delta = abs(self.particles[0].delta) > delta_min
         mask2_delta = abs(self.particles[1].delta) > delta_min
+        print(f'\nM = {sum(mask1_delta) + sum(mask2_delta)}\n')
         total_scattering_rate_mc = np.sum(local_scattering_rate[0][mask1_delta]) + np.sum(local_scattering_rate[1][mask2_delta])
 
+        # This is OK (benchmarked with APS-ERL)
         piwinski_total_scattering_rate = self._compute_piwinski_total_scattering_rate(self.element)
 
         integrated_piwinski_total_scattering_rate = self.integrated_piwinski_total_scattering_rates[self.element]
@@ -430,7 +429,7 @@ class TouschekCalculator():
 
         total_scattering_rate = np.concatenate((total_scattering_rate1, total_scattering_rate2))
 
-        return total_scattering_rate
+        return total_scattering_rate_mc, piwinski_total_scattering_rate
     
 
 class TouschekElement():
@@ -445,7 +444,7 @@ class TouschekElement():
         return
 
 class TouschekManager:
-    def __init__(self, line, nemitt_x, nemitt_y, sigma_z, sigma_delta, n_elem, n_part, delta_min=0.001):
+    def __init__(self, line, nemitt_x, nemitt_y, sigma_z, sigma_delta, n_elem, kb, n_part, delta_min=0.005, nx=3, ny=3, nz=3):
         self.line = line
         self.ref_particle = line.particle_ref
         self.nemitt_x = nemitt_x
@@ -453,8 +452,12 @@ class TouschekManager:
         self.sigma_z = sigma_z
         self.sigma_delta = sigma_delta
         self.n_elem = n_elem
+        self.kb = kb
         self.n_part = n_part
         self.delta_min = delta_min
+        self.nx = nx
+        self.ny = ny
+        self.nz = nz
         self.s = []
         self.touschek_elems = []
         self.touschek = TouschekCalculator(self)
@@ -513,55 +516,93 @@ class TouschekManager:
 
     def _generate_particles(self, twiss, element):
         n_part_over_two = int(self.n_part / 2)
-        # Particle object 1
-        x_norm1, px_norm1 = xp.generate_2D_gaussian(n_part_over_two)
-        y_norm1, py_norm1 = xp.generate_2D_gaussian(n_part_over_two)
+        beta0 = self.ref_particle.beta0[0]
+        gamma0 = self.ref_particle.gamma0[0]
 
-        # The longitudinal closed orbit needs to be manually supplied for now
-        element_index = self.line.element_names.index(element)
-        zeta_co = twiss.zeta[element_index] 
-        delta_co = twiss.delta[element_index] 
+        nx = self.nx
+        ny = self.ny
+        nz = self.nz
 
-        zeta1, delta1 = xp.generate_longitudinal_coordinates(
-                            line=self.line,
-                            num_particles=n_part_over_two, distribution='gaussian',
-                            sigma_z=self.sigma_z, particle_ref=self.ref_particle)
+        sigma_z = self.sigma_z
+        sigma_delta = self.sigma_delta
 
-        particles1 = self.line.build_particles(
-                            particle_ref=self.ref_particle,
-                            x_norm=x_norm1, px_norm=px_norm1,
-                            y_norm=y_norm1, py_norm=py_norm1,
-                            zeta=zeta1 + zeta_co,
-                            delta=delta1 + delta_co,
-                            nemitt_x=self.nemitt_x,
-                            nemitt_y=self.nemitt_y,
-                            at_element=element
+        gemitt_x = self.nemitt_x / beta0 / gamma0
+        gemitt_y = self.nemitt_y / beta0 / gamma0   
+
+        bets = sigma_z / sigma_delta
+        gemitt_z = sigma_z**2 / bets 
+
+        alfx = twiss['alfx', element]
+        betx = twiss['betx', element]
+
+        alfy = twiss['alfy', element]
+        bety = twiss['bety', element]   
+
+        dx = twiss['dx', element]
+        dpx = twiss['dpx', element]
+
+        dy = twiss['dy', element]
+        dpy = twiss['dpy', element]     
+
+        x_norm1 = np.random.uniform(-nx*np.sqrt(gemitt_x), nx*np.sqrt(gemitt_x), n_part_over_two)
+        px_norm1 = np.random.uniform(-nx*np.sqrt(gemitt_x), nx*np.sqrt(gemitt_x), n_part_over_two)
+        px_norm2 = np.random.uniform(-nx*np.sqrt(gemitt_x), nx*np.sqrt(gemitt_x), n_part_over_two)
+        y_norm1 = np.random.uniform(-ny*np.sqrt(gemitt_y), ny*np.sqrt(gemitt_y), n_part_over_two)
+        py_norm1 = np.random.uniform(-ny*np.sqrt(gemitt_y), ny*np.sqrt(gemitt_y), n_part_over_two)
+        py_norm2 = np.random.uniform(-ny*np.sqrt(gemitt_y), ny*np.sqrt(gemitt_y), n_part_over_two)
+        zeta_norm1 = np.random.uniform(-nz*np.sqrt(gemitt_z), nz*np.sqrt(gemitt_z), n_part_over_two)
+        delta_norm1 = np.random.uniform(-nz*np.sqrt(gemitt_z), nz*np.sqrt(gemitt_z), n_part_over_two)
+        delta_norm2 = np.random.uniform(-nz*np.sqrt(gemitt_z), nz*np.sqrt(gemitt_z), n_part_over_two)
+
+        xb1 = np.sqrt(betx) * x_norm1 
+        pxb1 = (px_norm1 - alfx*x_norm1) / np.sqrt(betx)
+
+        yb1 = np.sqrt(bety) * y_norm1
+        pyb1 = (py_norm1 - alfy*y_norm1) / np.sqrt(bety)
+
+        zeta1 = np.sqrt(bets) * zeta_norm1
+        zeta2 = zeta1
+        delta1 = (delta_norm1) / np.sqrt(bets)
+        delta2 = (delta_norm2) / np.sqrt(bets)
+
+        # Dispersion correction
+        x1 = xb1 + dx * delta1
+        px1 = pxb1 + dpx * delta1
+        y1 = yb1 + dy * delta1 
+        py1 = pyb1 + dpy * delta1
+
+        x2b = x1 - dx * delta2
+        y2b = y1 - dy * delta2
+
+        x_norm2 = x2b / np.sqrt(betx)
+        y_norm2 = y2b / np.sqrt(bety)
+
+        pxb2 = (px_norm2 - alfx*x_norm2) / np.sqrt(betx)
+        pyb2 = (py_norm2 - alfy*y_norm2) / np.sqrt(bety)
+
+        x2 = x1
+        px2 = pxb2 + dpx * delta2
+        y2 = y1
+        py2 = pyb2 + dpy * delta2
+
+        particles1 = xp.Particles(
+            mass0=self.ref_particle.mass0,
+            q0=self.ref_particle.q0,
+            p0c=self.ref_particle.p0c[0],
+            x=x1, px=px1,
+            y=y1, py=py1,
+            zeta=zeta1, delta=delta1
         )
 
         particles1.start_tracking_at_element = -1
 
-        # Particle object 2
-        # The particles are colliding  (x2=x1, y2=y1, zeta2=zeta1)
-        x_norm2 = x_norm1
-        _, px_norm2 = xp.generate_2D_gaussian(n_part_over_two)
-        y_norm2 = y_norm1
-        _, py_norm2 = xp.generate_2D_gaussian(n_part_over_two)
-        zeta2 = zeta1
-        _, delta2 = xp.generate_longitudinal_coordinates(
-                            line=self.line,
-                            num_particles=n_part_over_two, distribution='gaussian',
-                            sigma_z=self.sigma_z, particle_ref=self.ref_particle)
-
-
-        particles2 = self.line.build_particles(
-                            particle_ref=self.ref_particle,
-                            x_norm=x_norm2, px_norm=px_norm2,
-                            y_norm=y_norm2, py_norm=py_norm2,
-                            zeta=zeta2 + zeta_co,
-                            delta=delta2 + delta_co,
-                            nemitt_x=self.nemitt_x,
-                            nemitt_y=self.nemitt_y,
-                            at_element=element
+        particles2 = xp.Particles(
+            mass0=self.ref_particle.mass0,
+            q0=self.ref_particle.q0,
+            p0c=self.ref_particle.p0c[0],
+            x=x2, px=px2,
+            y=y2, py=py2,
+            zeta=zeta2, delta=delta2
         )
 
         particles2.start_tracking_at_element = -1
@@ -569,63 +610,76 @@ class TouschekManager:
         return [particles1, particles2]
     
 
-    def _compute_phase_space_density(self, particles):
-        n_part_over_two = int(self.n_part / 2)
-        
-        data = np.vstack((particles.x,
-                            particles.px,
-                            particles.y,
-                            particles.py,
-                            particles.zeta,
-                            particles.delta))
+    def _compute_phase_space_density(self, particles, element):
+        kb = self.kb
+        twiss = self.touschek.twiss
 
-        kde = gaussian_kde(data)
+        alfx = twiss['alfx', element]
+        betx = twiss['betx', element]
+        alfy = twiss['alfy', element]
+        bety = twiss['bety', element]
+        dx = twiss['dx', element]
+        dpx = twiss['dpx', element]
+        dy = twiss['dy', element]
+        dpy = twiss['dpy', element]
 
-        phase_space_density = []
-        for ii in range(n_part_over_two):
-            phase_space_point = np.array([
-                particles.x[ii],
-                particles.px[ii],
-                particles.y[ii],
-                particles.py[ii],
-                particles.zeta[ii],
-                particles.delta[ii]
-            ])
-            phase_space_density.append(kde(phase_space_point))
+        beta0 = self.ref_particle.beta0[0]
+        gamma0 = self.ref_particle.gamma0[0]
+        gemitt_x = self.nemitt_x / beta0 / gamma0
+        gemitt_y = self.nemitt_y / beta0 / gamma0
+
+        sigmab_x = np.sqrt(gemitt_x * betx) # Horizontal betatron beam size
+        sigmab_y = np.sqrt(gemitt_y * bety) # Vertical betatron beam size
+
+        sigma_z = self.sigma_z
+        sigma_delta = self.sigma_delta
+        gemitt_z = sigma_z * sigma_delta
+
+        x = particles.x - dx * particles.delta
+        px = particles.px - dpx * particles.delta
+        y = particles.y - dy * particles.delta
+        py = particles.py - dpy * particles.delta
+        zeta = particles.zeta
+        delta = particles.delta
+
+        phase_space_density = kb / (8 * np.pi**3 * gemitt_x * gemitt_y * gemitt_z) \
+                                * np.exp(-zeta**2 / (2 * sigma_z**2) - delta**2 / (2 * sigma_delta**2)) \
+                                * np.exp(-(x**2 + (alfx*x + betx*px)**2) / (2 * sigmab_x**2) \
+                                         -(y**2 + (alfy*y + bety*py)**2) / (2 * sigmab_y**2))
 
         return np.array(phase_space_density)
     
 
     def _compute_phase_space_volume(self, twiss, element):
-        gemitt_x = self.nemitt_x / self.ref_particle.beta0[0] / self.ref_particle.gamma0[0] 
-        sigma_x = np.sqrt(twiss['betx', element] * gemitt_x)
-        betx = twiss['betx', element]
-
-        gemitt_y = self.nemitt_y / self.ref_particle.beta0[0] / self.ref_particle.gamma0[0]
-        sigma_y = np.sqrt(twiss['bety', element] * gemitt_y)
-        bety = twiss['bety', element]
+        nx = self.nx
+        ny = self.ny
+        nz = self.nz
 
         sigma_z = self.sigma_z
         sigma_delta = self.sigma_delta
 
+        gemitt_x = self.nemitt_x / self.ref_particle.beta0[0] / self.ref_particle.gamma0[0] 
+        betx = twiss['betx', element]
+
+        gemitt_y = self.nemitt_y / self.ref_particle.beta0[0] / self.ref_particle.gamma0[0]
+        bety = twiss['bety', element]
+
         bets = sigma_z / sigma_delta
         gemitt_z = sigma_z**2 / bets
 
-        # NOTE: sigma_z / sigma_delta = beta_s
-        phase_space_volume = np.sqrt(twiss['betx', element]*twiss['bety', element]*(self.sigma_z / self.sigma_delta)) * \
-                                     (2*sigma_x)**3 * (2*sigma_y)**3 * (2*sigma_z)**3 
-
-        # phase_space_volume = np.pi**2 / np.sqrt(betx * bety * bets) * (2*np.sqrt(gemitt_x))**3 * (2*np.sqrt(gemitt_y))**3 * (2*np.sqrt(gemitt_z))**3
+        phase_space_volume = np.pi**2 / np.sqrt(betx * bety * bets) * (2*nx*np.sqrt(gemitt_x))**3 * (2*ny*np.sqrt(gemitt_y))**3 * (2*nz*np.sqrt(gemitt_z))**3
         
         return phase_space_volume
 
 
     def initialise_touschek_elems(self):
-        self.s = self._get_s_elements_to_insert()
+        # self.s = self._get_s_elements_to_insert()
+        self.s = [ 0.        ,  1.17777778,  2.35555556,  3.53333333,  4.71111111,
+                   5.88888889,  7.06666667,  8.24444444,  9.42222222, 10.6       ]
         self._install_touschek_markers(self.s)
 
         self.line.build_tracker()
-        twiss = self.line.twiss()
+        twiss = self.line.twiss4d()
 
         # Pass the twiss table to the TouschekCalculator
         self.touschek.twiss = twiss
@@ -636,34 +690,47 @@ class TouschekManager:
         self.touschek._assign_piwinski_total_scattering_rates()
         print('Done.\n')
 
+
+        scattering_rates = {'s': self.s,
+                            'mc': [],
+                            'piwinski': []}
         for ii in range(self.n_elem):
             # Pass the name of the Touschek marker to the TouschekCalculator
             self.touschek.element = f'TMarker_{ii}'
 
             print(f'Generating particles at element {self.touschek.element}...')
-            particles = self._generate_particles(twiss, f'TMarker_{ii}')
+            particles = self._generate_particles(twiss, self.touschek.element)
 
             print(f'Computing phase space density at element {self.touschek.element}...')
             phase_space_density = []
-            phase_space_density.append(self._compute_phase_space_density(particles[0]))
-            phase_space_density.append(self._compute_phase_space_density(particles[1]))
+            phase_space_density.append(self._compute_phase_space_density(particles[0], self.touschek.element))
+            phase_space_density.append(self._compute_phase_space_density(particles[1], self.touschek.element))
 
             print(f'Scattering particles at element {self.touschek.element}...')
             self.touschek.scatter(particles)
 
             print(f'Compute phase space volume at element {self.touschek.element}...')
-            phase_space_volume = self._compute_phase_space_volume(twiss, f'TMarker_{ii}')
+            phase_space_volume = self._compute_phase_space_volume(twiss, self.touschek.element)
 
-            print(f'Computing total scattering rate at element {self.touschek.element}...')
-            total_scattering_rate = self.touschek.compute_total_scattering_rate(phase_space_volume, phase_space_density)
+            # print(f'Computing total scattering rate at element {self.touschek.element}...')
+            # total_scattering_rate = self.touschek.compute_total_scattering_rate(phase_space_volume, phase_space_density)
+            # print('\n')
+
+            print(f'Computing scattering rates at element {self.touschek.element}...')
+            mc_scattering_rate, piwinski_scattering_rate = self.touschek.compute_total_scattering_rate(phase_space_volume, phase_space_density)
             print('\n')
 
-            # particles is a list of two particle objects: merge the two particle objects into one particle object
-            particles_merged = xt.Particles.merge(particles)
+            scattering_rates['mc'].append(mc_scattering_rate)
+            scattering_rates['piwinski'].append(piwinski_scattering_rate)
 
-            self.touschek_elems.append(TouschekElement(particles_merged, total_scattering_rate, self))
+            # # particles is a list of two particle objects: merge the two particle objects into one particle object
+            # particles_merged = xt.Particles.merge(particles)
+
+            # self.touschek_elems.append(TouschekElement(particles_merged, total_scattering_rate, self))
 
         self.line.discard_tracker()
+
+        return scattering_rates
 
 
     def install_touschek_elements(self):
