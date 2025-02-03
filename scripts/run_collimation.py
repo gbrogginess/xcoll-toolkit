@@ -325,7 +325,6 @@ def insert_bb_lens_bounding_apertures(line):
 
 def _insert_beambeam_elements(line, config_dict, twiss_table, emit):
     beamstrahlung_mode = config_dict['run'].get('beamstrahlung', 'off')
-    beamstrahlung_mode = config_dict['run'].get('bhabha', 'off')
     # This is needed to set parameters of the beam-beam lenses
     beamstrahlung_on = beamstrahlung_mode != 'off'
 
