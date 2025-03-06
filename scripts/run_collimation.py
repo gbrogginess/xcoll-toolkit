@@ -20,10 +20,8 @@ from collections import namedtuple
 from pathlib import Path
 from warnings import warn
 from schema import Schema, And, Or, Use, Optional, SchemaError
-from contextlib import redirect_stdout, redirect_stderr, contextmanager
+from contextlib import contextmanager
 from pylhc_submitter.job_submitter import main as htcondor_submit
-from memory_profiler import profile
-from multiprocessing import Pool
 
 
 ParticleInfo = namedtuple('ParticleInfo', ['name', 'pdgid', 'mass', 'A', 'Z','charge'])
