@@ -8,13 +8,8 @@ from tqdm import tqdm
 from multiprocessing import Pool
 
 
-def _read_particles_hdf(filename):
-    if filename.endswith('part.hdf'):
-        key = 'particles'
-    elif filename.endswith('photons.hdf'):
-        key = 'photons'
-        
-    return pd.read_hdf(filename, key=key)
+def _read_particles_hdf(filename):        
+    return pd.read_hdf(filename, key='particles')
 
 
 def _load_lossmap_hdf(filename):
@@ -30,7 +25,7 @@ def _load_lossmap_hdf(filename):
     return lm_dict
 
 
-def load_output(directory, output_file, match_pattern='*part.hdf*',
+def load_output(directory, match_pattern='*part.hdf*',
                 imax=None, load_lossmap=True, load_particles=False):
 
     job_dirs = glob.glob(os.path.join(directory, 'Job.*')

@@ -1160,24 +1160,13 @@ def execute(config_file_path, config_dict):
 
 def merge(directory, output_file, match_pattern='*part.hdf*', load_particles=True):
     output_file = Path(output_file)
-
     t0 = time.time()
-
-    if match_pattern == '*part.hdf*':
-        part_merged, lmd_merged, dirs_visited, files_loaded = merge_output.load_output(directory,
-                                                                                       output_file,
-                                                                                       match_pattern=match_pattern,
-                                                                                       load_particles=load_particles,
-                                                                                       load_lossmap=True)
-    elif match_pattern == '*photons.hdf*':
-        part_merged, lmd_merged, dirs_visited, files_loaded = merge_output.load_output(directory,
-                                                                                       output_file,
-                                                                                       match_pattern=match_pattern,
-                                                                                       load_particles=load_particles,
-                                                                                       load_lossmap=False)
-
+    part_merged, lmd_merged, dirs_visited, files_loaded = merge_output.load_output(directory,
+                                                                                   match_pattern=match_pattern,
+                                                                                   load_particles=load_particles,
+                                                                                   load_lossmap=True)
+    
     _save_particles_hdf(output_file, part_merged, lmd_merged)
-
     print('Directories visited: {}, files loaded: {}'.format(
         dirs_visited, files_loaded))
     print(f'Processing done in {time.time() -t0} s')
@@ -1208,10 +1197,6 @@ def main():
     elif sys.argv[1] == '--merge':
         match_pattern = '*part.hdf*'
         output_file = 'part_merged.hdf'
-        merge(sys.argv[2], output_file, match_pattern=match_pattern, load_particles=True)
-    elif sys.argv[1] == '--merge_photons':
-        match_pattern = '*photons.hdf*'
-        output_file = 'photons_merged.hdf'
         merge(sys.argv[2], output_file, match_pattern=match_pattern, load_particles=True)
     else:
         raise ValueError('The mode must be one of --run, --submit, --submit_local, --merge, --merge_photons')
