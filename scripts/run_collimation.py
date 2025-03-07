@@ -7,6 +7,7 @@ import shutil
 import copy
 import numpy as np
 import pandas as pd
+import numexpr as ne
 import subprocess
 import merge_output
 
