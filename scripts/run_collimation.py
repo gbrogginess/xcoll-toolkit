@@ -400,10 +400,6 @@ def load_and_process_line(config_dict):
     # Load the line and compute optics
     line = xt.Line.from_json(inp['xtrack_line'])
     line.particle_ref = ref_part
-
-    # # Check that all aperture markers are set
-    # apercheck = line.check_aperture()
-    # from IPython import embed; embed()
     
     rf_cavities = line.get_elements_of_type(xt.elements.Cavity)[0]
 
@@ -512,18 +508,14 @@ def load_xsuite_particles(config_dict, line, ref_particle, capacity):
     return part
 
 
-def _prepare_matched_beam(config_dict, line, ref_particle, element, emitt_x, emitt_y, num_particles, capacity):
+def _prepare_matched_beam(config_dict, line, twiss, ref_particle, element, emitt_x, emitt_y, num_particles, capacity):
     print(f'Preparing a matched Gaussian beam at {element}')
     sigma_z = config_dict['dist']['parameters']['sigma_z']
-    radiation_mode =  config_dict['run'].get('radiation', 'off')
-
-    _configure_tracker_radiation(line, radiation_mode, for_optics=True)
 
     x_norm, px_norm = xp.generate_2D_gaussian(num_particles)
     y_norm, py_norm = xp.generate_2D_gaussian(num_particles)
     
     # The longitudinal closed orbit needs to be manually supplied for now
-    twiss = line.twiss(**XTRACK_TWISS_KWARGS)
     element_index = line.element_names.index(element)
     zeta_co = twiss.zeta[element_index] 
     delta_co = twiss.delta[element_index] 
@@ -552,7 +544,7 @@ def _prepare_matched_beam(config_dict, line, ref_particle, element, emitt_x, emi
 
     return part
 
-def generate_xpart_particles(config_dict, line, ref_particle, capacity):
+def generate_xpart_particles(config_dict, line, twiss, ref_particle, capacity):
     dist_params = config_dict['dist']['parameters']
     num_particles = config_dict['run']['nparticles']
     element = config_dict['dist']['start_element']
@@ -577,7 +569,6 @@ def generate_xpart_particles(config_dict, line, ref_particle, capacity):
             print(f'Paramter sigma_z > 0, preparing a longitudinal distribution matched to the RF bucket')
             longitudinal_mode = 'bucket'
 
-        twiss = line.twiss(**XTRACK_TWISS_KWARGS)
         particles = xc.generate_pencil_on_collimator(line=line,
                                                      name=element,
                                                      num_particles=num_particles,
@@ -590,7 +581,7 @@ def generate_xpart_particles(config_dict, line, ref_particle, capacity):
                                                      longitudinal_betatron_cut=None,
                                                      _capacity=capacity)
     elif dist_type == 'matched_beam':
-        particles = _prepare_matched_beam(config_dict, line, ref_particle, 
+        particles = _prepare_matched_beam(config_dict, line, twiss, ref_particle, 
                                           element, ex, ey, num_particles, capacity)
     else:
         raise Exception('Cannot process beam distribution')
@@ -628,7 +619,7 @@ def _save_particles_hdf(fpath, particles=None, lossmap_data=None, reduce_particl
                          complevel=9, complib='blosc')
 
 
-def prepare_particles(config_dict, line, ref_particle):
+def prepare_particles(config_dict, line, twiss, ref_particle):
     dist = config_dict['dist']
     capacity = config_dict['run']['max_particles']
 
@@ -637,7 +628,7 @@ def prepare_particles(config_dict, line, ref_particle):
     if dist['source'] == 'xsuite':
         particles = load_xsuite_particles(config_dict, line, ref_particle, capacity)
     elif dist['source'] == 'internal':
-        particles = generate_xpart_particles(config_dict, line, ref_particle, capacity)
+        particles = generate_xpart_particles(config_dict, line, twiss, ref_particle, capacity)
     else:
         raise ValueError('Unsupported distribution source: {}. Supported ones are: {}'
                          .format(dist['soruce'], ','.join(_supported_dist)))
@@ -669,7 +660,7 @@ def _compute_parameter(parameter, expression, turn, max_turn, extra_variables={}
     return type(parameter)(ne.evaluate(expression, local_dict=var_dict))
 
 
-def _prepare_dynamic_element_change(line, twiss_table, gemit_x, gemit_y, change_dict_list, max_turn):
+def _prepare_dynamic_element_change(line, twiss, gemitt_x, gemitt_y, change_dict_list, max_turn):
     if change_dict_list is None:
         return None
     
@@ -703,9 +694,9 @@ def _prepare_dynamic_element_change(line, twiss_table, gemit_x, gemit_y, change_
             for ele_name in element_names:
                 ebe_change_dict[ele_name] = parameter_values
         else:
-            ebe_keys = set(twiss_table._col_names) - {'W_matrix', 'name'}
-            scalar_keys = (set(twiss_table._data.keys()) 
-                           - set(twiss_table._col_names) 
+            ebe_keys = set(twiss._col_names) - {'W_matrix', 'name'}
+            scalar_keys = (set(twiss._data.keys()) 
+                           - set(twiss._col_names) 
                            - {'R_matrix', 'values_at', 'particle_on_co'})
 
             # If the change is computed on the fly, iterative changes
@@ -715,14 +706,14 @@ def _prepare_dynamic_element_change(line, twiss_table, gemit_x, gemit_y, change_
 
                 elem = line.element_dict[ele_name]
                 elem_index = line.element_names.index(ele_name)
-                elem_twiss_vals = {kk: float(twiss_table[kk][elem_index]) for kk in ebe_keys}
-                scalar_twiss_vals = {kk: twiss_table[kk] for kk in scalar_keys}
+                elem_twiss_vals = {kk: float(twiss[kk][elem_index]) for kk in ebe_keys}
+                scalar_twiss_vals = {kk: twiss[kk] for kk in scalar_keys}
                 twiss_vals = {**elem_twiss_vals, **scalar_twiss_vals}
 
-                twiss_vals['sigx'] = np.sqrt(gemit_x * twiss_vals['betx'])
-                twiss_vals['sigy'] = np.sqrt(gemit_y * twiss_vals['bety'])
-                twiss_vals['sigxp'] = np.sqrt(gemit_x * twiss_vals['gamx'])
-                twiss_vals['sigyp'] = np.sqrt(gemit_y * twiss_vals['gamy'])
+                twiss_vals['sigx'] = np.sqrt(gemitt_x * twiss_vals['betx'])
+                twiss_vals['sigy'] = np.sqrt(gemitt_y * twiss_vals['bety'])
+                twiss_vals['sigxp'] = np.sqrt(gemitt_x * twiss_vals['gamx'])
+                twiss_vals['sigyp'] = np.sqrt(gemitt_y * twiss_vals['gamy'])
 
                 param_value = getattr(elem, param_name)
                 if param_index is not None:
@@ -1020,7 +1011,7 @@ def submit_local_jobs(config_file_path, config_dict):
     #                > {shlex.quote(str(working_dir_path))}/Job.{{}}/log.txt'""", shell=True)
 
 
-def run(config_file_path, config_dict, line, particles, ref_part, start_element, s0):
+def run(config_file_path, config_dict, line, twiss, particles, ref_part, start_element, s0):
     radiation_mode = config_dict['run']['radiation']
     beamstrahlung_mode = config_dict['run']['beamstrahlung']
     bhabha_mode = config_dict['run']['bhabha']
@@ -1032,23 +1023,23 @@ def run(config_file_path, config_dict, line, particles, ref_part, start_element,
     if 'dynamic_change' in config_dict:
         dyn_change_dict =  config_dict['dynamic_change']
 
-        _configure_tracker_radiation(line, radiation_mode, for_optics=True)
-        twiss_table = line.twiss(**XTRACK_TWISS_KWARGS)
-
         emittance = config_dict['beam']['emittance']
         if isinstance(emittance, dict):
             emit = (emittance['x'], emittance['y'])
         else:
             emit = (emittance, emittance)
 
-        gemit_x = emit[0]/ref_part.beta0[0]/ref_part.gamma0[0]
-        gemit_y = emit[1]/ref_part.beta0[0]/ref_part.gamma0[0]
+        beta0 = ref_part.beta0[0]
+        gamma0 = ref_part.gamma0[0]
+
+        gemitt_x = emit[0] / beta0 / gamma0
+        gemitt_y = emit[1] / beta0 / gamma0
 
         if 'element' in dyn_change_dict:
             dyn_change_elem = dyn_change_dict.get('element', None)
             if dyn_change_elem is not None and not isinstance(dyn_change_elem, list):
                 dyn_change_elem = [dyn_change_elem,]
-            tbt_change_list = _prepare_dynamic_element_change(line, twiss_table, gemit_x, gemit_y, dyn_change_elem, nturns)
+            tbt_change_list = _prepare_dynamic_element_change(line, twiss, gemitt_x, gemitt_y, dyn_change_elem, nturns)
     
     _configure_tracker_radiation(line, radiation_mode, beamstrahlung_mode, bhabha_mode, for_optics=False)
     if 'quantum' in (radiation_mode, beamstrahlung_mode, bhabha_mode):
@@ -1089,9 +1080,8 @@ def run(config_file_path, config_dict, line, particles, ref_part, start_element,
     print(f'Tracking {nturns} turns done in: {time.time()-t0} s')
 
     output_file = Path(config_dict['run'].get('outputfile', 'part.hdf'))
-    output_dir = output_file.parent
-    # This is new
     output_file = config_file_path.parent / output_file
+    output_dir = output_file.parent
     output_dir = config_file_path.parent / output_dir
     if not os.path.exists(output_dir):
         # If the output directory does not exist, create it
@@ -1113,9 +1103,9 @@ def run(config_file_path, config_dict, line, particles, ref_part, start_element,
                          weights=None, # energy weights?
                          weight_function=None)
     particles = LossMap.part
-    # Save xcoll loss map
-    fpath = output_dir / 'lossmap.json'
-    LossMap.to_json(fpath)
+    # # Save xcoll loss map
+    # fpath = output_dir / 'lossmap.json'
+    # LossMap.to_json(fpath)
     del LossMap
 
     # Make collimasim loss map
@@ -1135,13 +1125,11 @@ def run(config_file_path, config_dict, line, particles, ref_part, start_element,
 def execute(config_file_path, config_dict):
     config_dict = CONF_SCHEMA.validate(config_dict)
     
-    line, ref_part, start_elem, s0 = load_and_process_line(config_dict)
+    line, twiss, ref_part, start_elem, s0 = load_and_process_line(config_dict)
 
-    build_collimation_tracker(line)
+    particles = prepare_particles(config_dict, line, twiss, ref_part)
 
-    particles = prepare_particles(config_dict, line, ref_part)
-
-    run(config_file_path, config_dict, line, particles, ref_part, start_elem, s0)
+    run(config_file_path, config_dict, line, twiss, particles, ref_part, start_elem, s0)
 
 
 def merge(directory, output_file, match_pattern='*part.hdf*', load_particles=True):
@@ -1162,7 +1150,6 @@ def main():
     if len(sys.argv) != 3:
         raise ValueError(
             'The script only takes two inputs: the mode and the target')
-
     if sys.argv[1] == '--run':
         t0 = time.time()
         config_file = sys.argv[2]
