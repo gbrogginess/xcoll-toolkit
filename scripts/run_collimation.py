@@ -365,6 +365,21 @@ def _insert_beambeam_elements(line, config_dict, twiss_table, emit):
         
         insert_bb_lens_bounding_apertures(line)
 
+
+def load_colldb(colldb, emit_dict):
+    if colldb.endswith('.json'):
+        colldb = xc.CollimatorDatabase.from_json(colldb,
+                                                    nemitt_x=emit_dict['x'],
+                                                    nemitt_y=emit_dict['y'])
+    elif colldb.endswith('.dat'):
+        colldb = xc.CollimatorDatabase.from_SixTrack(colldb,
+                                                nemitt_x=emit_dict['x'],
+                                                nemitt_y=emit_dict['y'])
+    else:
+        raise ValueError('Unknown collimator database format: {}. Must be .json or .dat'.format(colldb))
+    return colldb
+
+
 def load_and_process_line(config_dict):
     beam = config_dict['beam']
     inp = config_dict['input']
@@ -421,15 +436,7 @@ def load_and_process_line(config_dict):
     line.build_tracker()
     line.discard_tracker()    
 
-    # TODO: make this more elegant
-    if inp['collimator_file'].endswith('.json'):
-        colldb = xc.CollimatorDatabase.from_json(inp['collimator_file'],
-                                                    nemitt_x=emittance['x'],
-                                                    nemitt_y=emittance['y'])
-    elif inp['collimator_file'].endswith('.dat'):
-        colldb = xc.CollimatorDatabase.from_SixTrack(inp['collimator_file'],
-                                                nemitt_x=emittance['x'],
-                                                nemitt_y=emittance['y'])
+    colldb = load_colldb(inp['collimator_file'], emittance)
     
     colldb.install_geant4_collimators(line=line, verbose=True)
 
