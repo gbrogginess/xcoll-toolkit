@@ -167,6 +167,9 @@ def _configure_tracker_radiation(line, radiation_model, beamstrahlung_model=None
     _beamstrahlung_model = None if beamstrahlung_model == 'off' else beamstrahlung_model
     _bhabha_model = None if bhabha_model == 'off' else bhabha_model
 
+    if line.tracker is None:
+        line.build_tracker()
+
     if radiation_model == 'mean':
         if for_optics:
             # Ignore beamstrahlung and bhabha for optics
@@ -175,9 +178,6 @@ def _configure_tracker_radiation(line, radiation_model, beamstrahlung_model=None
             line.configure_radiation(model=radiation_model, 
                                      model_beamstrahlung=_beamstrahlung_model,
                                      model_bhabha=_bhabha_model)
-        # The matrix stability tolerance needs to be relaxed for radiation and tapering
-        # TODO: check if this is still needed
-        line.matrix_stability_tol = 0.5
 
     elif radiation_model == 'quantum':
         if for_optics:
@@ -188,7 +188,6 @@ def _configure_tracker_radiation(line, radiation_model, beamstrahlung_model=None
             line.configure_radiation(model='quantum',
                                      model_beamstrahlung=_beamstrahlung_model,
                                      model_bhabha=_bhabha_model)
-        line.matrix_stability_tol = 0.5
 
     elif radiation_model == 'off':
         pass
@@ -198,8 +197,9 @@ def _configure_tracker_radiation(line, radiation_model, beamstrahlung_model=None
 
 
 def _compensate_energy_loss(line, delta0=0.):
-    _configure_tracker_radiation(line, 'mean')
+    _configure_tracker_radiation(line, 'mean', for_optics=True)
     line.compensate_radiation_energy_loss(delta0=delta0)
+    line.discard_tracker()
 
 
 def _insert_user_element(line, elem_def):
@@ -418,29 +418,24 @@ def load_and_process_line(config_dict):
         XTRACK_TWISS_KWARGS['method'] = '4d'
 
     print('Using Xtrack-generated twiss table for collimator optics')
-    # Use a clean tracker to compute the optics
-    # TODO: reduce the copying here
-    optics_line = line.copy()
-    optics_line.build_tracker()
     radiation_mode = run['radiation']
 
     if comp_eloss:
         # If energy loss compensation is required, taper the lattice
         print('Compensating synchrotron energy loss (tapering mangets)')
         comp_eloss_delta0 = run.get('sr_compensation_delta', 0.0)
-        _compensate_energy_loss(optics_line, comp_eloss_delta0)
-        line = optics_line.copy()
-
-    # Build and discard the tracker. Needed to have all the element slices with ._parent attribute
-    # TODO: remove this when xsuite issue #551 (https://github.com/xsuite/xsuite/issues/551) is resolved
-    line.build_tracker()
-    line.discard_tracker()    
+        _compensate_energy_loss(line, comp_eloss_delta0)
+    else:
+        # Build and discard the tracker. Needed to have all the element slices with ._parent attribute
+        # TODO: possibly remove this when xsuite issue #551 (https://github.com/xsuite/xsuite/issues/551) is resolved
+        # NOTE: if comp_eloss is True, the tracker is built and discarded in _compensate_energy_loss
+        line.build_tracker()
+        line.discard_tracker()    
 
     colldb = load_colldb(inp['collimator_file'], emittance)
     
     colldb.install_geant4_collimators(line=line, verbose=True)
 
-    line.build_tracker()
     _configure_tracker_radiation(line, radiation_mode, for_optics=True)
     twiss = line.twiss(**XTRACK_TWISS_KWARGS)
     line.collimators.assign_optics(twiss=twiss)
@@ -464,27 +459,7 @@ def load_and_process_line(config_dict):
 
     # Insert beam-beam lenses if any are specified:
     _insert_beambeam_elements(line, config_dict, twiss, (emittance['x'], emittance['y']))
-    return line, ref_part, start_element, s0
-
-
-def build_collimation_tracker(line):
-    # Chose a context
-    context = xo.ContextCpu()  # Only support CPU for Geant4 coupling TODO: maybe not needed anymore?
-    # Transfer lattice on context and compile tracking code
-    global_aper_limit = 1e3  # Make this large to ensure particles lost on aperture markers
-
-    # compile the track kernel once and set it as the default kernel. TODO: a bit clunky, find a more elegant approach
-
-    line.build_tracker(_context=context)
-
-    tracker_opts=dict(track_kernel=line.tracker.track_kernel,
-                      _buffer=line.tracker._buffer,
-                      _context=line.tracker._context,
-                      io_buffer=line.tracker.io_buffer)
-    
-    line.discard_tracker() 
-    line.build_tracker(**tracker_opts)
-    line.config.global_xy_limit=global_aper_limit
+    return line, twiss, ref_part, start_element, s0
 
 
 def load_xsuite_csv_particles(dist_file, ref_particle, line, element, num_part, capacity, keep_ref_particle=False, copy_file=False):
@@ -582,12 +557,15 @@ def generate_xpart_particles(config_dict, line, ref_particle, capacity):
     num_particles = config_dict['run']['nparticles']
     element = config_dict['dist']['start_element']
     dist_params = config_dict['dist']['parameters']
+    radiation_mode = config_dict['run'].get('radiation', 'off')
 
     emittance = config_dict['beam']['emittance']
     if isinstance(emittance, dict): # Normalised emittances
         ex, ey = emittance['x'], emittance['y']
     else:
         ex = ey = emittance
+
+    _configure_tracker_radiation(line, radiation_mode, for_optics=True)
 
     particles = None
     dist_type = dist_params.get('type', '')
