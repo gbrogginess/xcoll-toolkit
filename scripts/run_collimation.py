@@ -394,10 +394,10 @@ def load_and_process_line(config_dict):
 
     if run.get('turn_rf_off', False):
         print('Turning RF cavities off (set voltage to 0)')
-        for cv in rf_cavities:
-            cv.voltage = 0
+        for cav in rf_cavities:
+            cav.voltage = 0
 
-    if not any((cv.voltage > 0 for cv in rf_cavities)) or not any((cv.frequency > 0 for cv in rf_cavities)):
+    if not any((cav.voltage > 0 for cav in rf_cavities)) or not any((cav.frequency > 0 for cav in rf_cavities)):
         assert not comp_eloss, 'Cannot compensate SR energy loss with cavities off'
         print('RF cavities have no voltage or frequency, Twiss will be 4D')
         XTRACK_TWISS_KWARGS['method'] = '4d'
