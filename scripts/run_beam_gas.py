@@ -507,7 +507,7 @@ def load_and_process_line(config_dict):
     start_element = random.choice(line.element_names)
     s0 = line.get_s_position(at_elements=start_element, mode='upstream')
 
-    return line, ref_part, bgman, start_element, s0
+    return line, twiss, ref_part, bgman, start_element, s0
 
 
 def get_n_interactions_dict(line):
@@ -737,7 +737,7 @@ def execute(config_file_path, config_dict):
 
     bgman.initialise_particles(particles)
 
-    run(config_file_path, config_dict, line, twiss, bgman, particles, start_elem, s0)
+    run(config_file_path, config_dict, line, bgman, particles, start_elem, s0)
 
 
 @contextmanager
