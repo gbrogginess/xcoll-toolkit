@@ -339,7 +339,7 @@ class BeamGasManager():
         self.part_initialised = False
 
 
-    def cross_section_biasing(self, line, gas_parameters):
+    def cross_section_biasing(self, gas_parameters):
         avg_gas_parameters = {
             kk: {'n_avg': self.density_df[kk.split('_')[0]].mean(), 'xsec': gas_parameters[kk]['xsec']}
             for kk in gas_parameters
