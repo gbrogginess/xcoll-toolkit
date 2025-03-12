@@ -8,6 +8,7 @@ from scipy.constants import physical_constants
 
 ELECTRON_MASS_EV = xt.ELECTRON_MASS_EV
 EV_TO_MEV = 1E-6
+MEV_TO_EV = 1E6
 
 C_LIGHT = physical_constants['speed of light in vacuum'][0]
 ALPHA = physical_constants['fine-structure constant'][0]
@@ -15,7 +16,7 @@ HBAR = physical_constants['Planck constant over 2 pi in eV s'][0]
 CLASSICAL_ELECTRON_RADIUS = physical_constants['classical electron radius'][0]
 BOHR_RADIUS = physical_constants['Bohr radius'][0]
 ELECTRON_REDUCED_COMPTON_WAVELENGTH = physical_constants['reduced Compton wavelength'][0]
-ATOMIC_MASS_CONSTANT_EV = physical_constants['atomic mass constant energy equivalent in MeV'][0] * 1E6
+ATOMIC_MASS_CONSTANT_EV = physical_constants['atomic mass constant energy equivalent in MeV'][0] * MEV_TO_EV
 
 C_TF = 1/2 * (3*np.pi/4)**(2/3) # Thomas-Fermi constant
 
@@ -333,13 +334,14 @@ class BeamGasManager():
         else:
             self.CoulombScat = None
 
+        self.bg_element_names = None
         self.particles = None
         self.circumference = None
         self.interaction_dist = None
         self.part_initialised = False
 
 
-    def cross_section_biasing(self, line, gas_parameters):
+    def cross_section_biasing(self, gas_parameters):
         avg_gas_parameters = {
             kk: {'n_avg': self.density_df[kk.split('_')[0]].mean(), 'xsec': gas_parameters[kk]['xsec']}
             for kk in gas_parameters
@@ -387,11 +389,12 @@ class BeamGasManager():
                 })
 
             # Bias the cross-section parameters
-            local_gas_params = self.cross_section_biasing(line, local_gas_params)
+            local_gas_params = self.cross_section_biasing(local_gas_params)
             dict_bg_elems[f'beam_gas_{index}'] = BeamGasElement(ds_list[index], local_gas_params, self)
             s.append(values.s)
         
-        BeamGasManager.df_interactions_log['name'] = list(dict_bg_elems.keys())
+        self.bg_element_names = list(dict_bg_elems.keys())
+        BeamGasManager.df_interactions_log['name'] = self.bg_element_names.copy()
 
         coll_idx = []
         for idx, elem in enumerate(line.elements):

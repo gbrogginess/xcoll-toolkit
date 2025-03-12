@@ -1,10 +1,8 @@
 import os
-import re
 import sys
 import copy
 import time
 import yaml
-import glob
 import shutil
 import random
 import numpy as np
@@ -18,10 +16,8 @@ from collections import namedtuple
 from pathlib import Path
 from contextlib import contextmanager
 
-import xobjects as xo
 import xtrack as xt
 import xpart as xp
-import xfields as xf
 import xcoll as xc
 import xgas as xg
 from pylhc_submitter.job_submitter import main as htcondor_submit
@@ -364,8 +360,6 @@ def generate_xpart_particles(config_dict, line, twiss, ref_particle, start_elem,
     else:
         ex = ey = emittance
 
-    _configure_tracker_radiation(line, radiation_mode, for_optics=True)
-
     particles = _prepare_matched_beam(config_dict, line, twiss, ref_particle, start_elem,  
                                       ex, ey, num_particles, capacity)
 
@@ -441,10 +435,6 @@ def load_and_process_line(config_dict):
         XTRACK_TWISS_KWARGS['method'] = '4d'
 
     print('Using Xtrack-generated twiss table for collimator optics')
-    # Use a clean tracker to compute the optics
-    # TODO: reduce the copying here
-    optics_line = line.copy()
-    optics_line.build_tracker()
     radiation_mode = run['radiation']
 
     if comp_eloss:
@@ -503,8 +493,16 @@ def load_and_process_line(config_dict):
 
     ##########################################################################################################
 
-    # Randomly select an element in the line to use it as start point
-    start_element = random.choice(line.element_names)
+    # Twiss again to get the optics at the beam-gas elements
+    _configure_tracker_radiation(line, radiation_mode, for_optics=True)
+    twiss = line.twiss(**XTRACK_TWISS_KWARGS)
+
+    # Randomly select one of the beam-gas elements to use it as start point
+    # A unique seed is assigned to reduce probability of selecting the same element in different jobs
+    # NOTE: when the script is ran through htcondor, the seed is the htcondor job id
+    seed = run.get('seed')
+    random.seed(seed)
+    start_element = random.choice(bgman.bg_element_names)
     s0 = line.get_s_position(at_elements=start_element, mode='upstream')
 
     return line, twiss, ref_part, bgman, start_element, s0
@@ -559,7 +557,7 @@ def prepare_lossmap(particles, line, s0, binwidth, weights):
         particles = particles.filter(mask_lost) #(mask_part_type & mask_lost)
 
     # Get a mask for the collimator losses
-    mask_losses_coll = np.in1d(particles.at_element, coll_idx)
+    mask_losses_coll = np.isin(particles.at_element, coll_idx)
 
     if weights == 'energy':
         part_mass_ratio = particles.charge_ratio / particles.chi
@@ -659,7 +657,7 @@ def run(config_file_path, config_dict, line, bgman, particles, start_element, s0
 
     # Track
     for turn in range(nturns):
-        print(f'Start turn {turn}, Survivng particles: {particles._num_active_particles}')
+        print(f'\nStart turn {turn}, Survivng particles: {particles._num_active_particles}')
 
         if turn == 1:
             deactivate_bg_elems(line)
