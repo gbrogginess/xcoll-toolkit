@@ -1,5 +1,4 @@
 - collimasim-toolkit loss maps -> xcoll loss maps
 - Loss map normalization in energy ?
 - Other scales for loss maps (e.g., power, energy, power/m, energy/m, ...)
-- Geant4 ID for collimators? Why can't we leave the collimator name?
 - Add merge impacts to merge_output

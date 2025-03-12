@@ -1,0 +1,90 @@
+# ===========================================
+# 🔹 Python Bytecode & Cache
+# ===========================================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ===========================================
+# 🔹 Virtual Environments
+# ===========================================
+venv/
+.venv/
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+.Python
+
+# ===========================================
+# 🔹 Build Artifacts
+# ===========================================
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+
+# ===========================================
+# 🔹 Editor & IDE Files
+# ===========================================
+# VSCode
+.vscode/
+.vscode/settings.json
+
+# PyCharm
+.idea/
+*.iml
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# ===========================================
+# 🔹 Logs & Temporary Files
+# ===========================================
+*.log
+*.tmp
+*.swp
+*.swo
+.DS_Store  # macOS Finder file
+Thumbs.db  # Windows thumbnail cache
+
+# ===========================================
+# 🔹 Package Management
+# ===========================================
+# Poetry
+poetry.lock
+
+# Pipenv
+Pipfile
+Pipfile.lock
+
+# Conda
+environment.yml
+
+# ===========================================
+# 🔹 Coverage & Testing
+# ===========================================
+.coverage
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+*.pycover
+.tox/
+.tox/*
+
+# ===========================================
+# 🔹 CI/CD & Deployment
+# ===========================================
+*.tar.gz
+*.zip
+
+# ===========================================
+# 🔹 Personal & Local Config Files
+# ===========================================
+*.local
+*.env
