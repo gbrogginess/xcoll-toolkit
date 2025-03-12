@@ -388,7 +388,7 @@ class BeamGasManager():
                 })
 
             # Bias the cross-section parameters
-            local_gas_params = self.cross_section_biasing(line, local_gas_params)
+            local_gas_params = self.cross_section_biasing(local_gas_params)
             dict_bg_elems[f'beam_gas_{index}'] = BeamGasElement(ds_list[index], local_gas_params, self)
             s.append(values.s)
         
