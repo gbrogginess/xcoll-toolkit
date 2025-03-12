@@ -334,6 +334,7 @@ class BeamGasManager():
         else:
             self.CoulombScat = None
 
+        self.bg_element_names = None
         self.particles = None
         self.circumference = None
         self.interaction_dist = None
@@ -392,7 +393,8 @@ class BeamGasManager():
             dict_bg_elems[f'beam_gas_{index}'] = BeamGasElement(ds_list[index], local_gas_params, self)
             s.append(values.s)
         
-        BeamGasManager.df_interactions_log['name'] = list(dict_bg_elems.keys())
+        self.bg_element_names = list(dict_bg_elems.keys())
+        BeamGasManager.df_interactions_log['name'] = self.bg_element_names.copy()
 
         coll_idx = []
         for idx, elem in enumerate(line.elements):
