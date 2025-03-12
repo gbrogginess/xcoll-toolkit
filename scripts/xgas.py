@@ -8,6 +8,7 @@ from scipy.constants import physical_constants
 
 ELECTRON_MASS_EV = xt.ELECTRON_MASS_EV
 EV_TO_MEV = 1E-6
+MEV_TO_EV = 1E6
 
 C_LIGHT = physical_constants['speed of light in vacuum'][0]
 ALPHA = physical_constants['fine-structure constant'][0]
@@ -15,7 +16,7 @@ HBAR = physical_constants['Planck constant over 2 pi in eV s'][0]
 CLASSICAL_ELECTRON_RADIUS = physical_constants['classical electron radius'][0]
 BOHR_RADIUS = physical_constants['Bohr radius'][0]
 ELECTRON_REDUCED_COMPTON_WAVELENGTH = physical_constants['reduced Compton wavelength'][0]
-ATOMIC_MASS_CONSTANT_EV = physical_constants['atomic mass constant energy equivalent in MeV'][0] * 1E6
+ATOMIC_MASS_CONSTANT_EV = physical_constants['atomic mass constant energy equivalent in MeV'][0] * MEV_TO_EV
 
 C_TF = 1/2 * (3*np.pi/4)**(2/3) # Thomas-Fermi constant
 
