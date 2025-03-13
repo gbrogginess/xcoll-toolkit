@@ -212,8 +212,8 @@ class TouschekCalculator():
         v_cm = beta_cm * C_LIGHT_VACUUM
 
         # TODO: Check in detail that V/N with N being the number of scattering events is correct
-        local_scattering_rate1 = phase_space_volume / npart_over_two * v_cm * self.gamma[0] * self.moller_dcs[0] * np.sin(self.theta_cm) * dens1 * dens2
-        local_scattering_rate2 = phase_space_volume / npart_over_two * v_cm * self.gamma[1] * self.moller_dcs[1] * np.sin(self.theta_cm) * dens1 * dens2
+        local_scattering_rate1 = phase_space_volume / npart_over_two * v_cm * self.gamma[0]**-2 * self.moller_dcs[0] * np.sin(self.theta_cm) * dens1 * dens2
+        local_scattering_rate2 = phase_space_volume / npart_over_two * v_cm * self.gamma[1]**-2 * self.moller_dcs[1] * np.sin(self.theta_cm) * dens1 * dens2
 
 
         return local_scattering_rate1, local_scattering_rate2
