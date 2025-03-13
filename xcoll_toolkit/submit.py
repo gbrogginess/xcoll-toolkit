@@ -20,7 +20,7 @@ import numpy as np
 from pathlib import Path
 from contextlib import contextmanager
 from pylhc_submitter.job_submitter import main as htcondor_submit
-from .config import COLLIMATION_CONF_SCHEMA, BEAMGAS_CONF_SCHEMA
+from .config import config, COLLIMATION_CONF_SCHEMA, BEAMGAS_CONF_SCHEMA, TOUSCHEK_CONF_SCHEMA
 
 
 @contextmanager
@@ -62,7 +62,14 @@ def submit_jobs(config_dict, config_file):
         conf_path = Path(conf_dir, conf_fname)
         
     with set_directory(conf_dir):
-        config_dict = COLLIMATION_CONF_SCHEMA.validate(config_dict)
+        if config.scenario == 'collimation':
+            config_dict = COLLIMATION_CONF_SCHEMA.validate(config_dict)
+        elif config.scenario == 'beamgas':
+            config_dict = BEAMGAS_CONF_SCHEMA.validate(config_dict)
+        elif config.scenario == 'touschek':
+            config_dict = TOUSCHEK_CONF_SCHEMA.validate(config_dict)
+        else:
+            raise ValueError(f'Unknown scenario: {config.scenario}. The supported ones are collimation, beamgas and touschek.')
 
         sub_dict = config_dict['jobsubmission']
         workdir = Path(sub_dict['working_directory']).resolve()
@@ -135,7 +142,14 @@ def submit_local_jobs(config_file_path, config_dict):
     if subprocess.run("parallel --version", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
         raise RuntimeError("GNU parallel is not installed or not available in the PATH.")
 
-    config_dict = COLLIMATION_CONF_SCHEMA.validate(config_dict)
+    if config.scenario == 'collimation':
+        config_dict = COLLIMATION_CONF_SCHEMA.validate(config_dict)
+    elif config.scenario == 'beamgas':
+        config_dict = BEAMGAS_CONF_SCHEMA.validate(config_dict)
+    elif config.scenario == 'touschek':
+        config_dict = TOUSCHEK_CONF_SCHEMA.validate(config_dict)
+    else:
+        raise ValueError(f'Unknown scenario: {config.scenario}. The supported ones are collimation, beamgas and touschek.')
 
     sub_dict = config_dict['localjobsubmission']
     
