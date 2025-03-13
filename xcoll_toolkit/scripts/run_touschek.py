@@ -164,10 +164,12 @@ def main():
         run(config_file_path, config_dict)
         print(f'Done! Time taken: {time.time()-t0} s')
     elif sys.argv[1] == '--submit':
+        config.scenario = 'touschek'
         config_file = sys.argv[2]
         config_dict = load_config(config_file)
         submit_jobs(config_dict, config_file)
     elif sys.argv[1] == '--submit_local':
+        config.scenario = 'touschek'
         t0 = time.time()
         config_file = sys.argv[2]
         config_file_path = Path(config_file).resolve()
