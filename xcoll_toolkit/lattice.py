@@ -19,6 +19,7 @@ from warnings import warn
 from .config import config
 from .utils import get_particle_info
 from .beamgas import xgas as xg
+from .touschek import xtouschek as xtt
 
 
 # ===========================================
@@ -282,15 +283,15 @@ def deactivate_bg_elems(line):
 # ===========================================
 # 🔹 Apertures
 # ===========================================
-def insert_missing_bounding_apertures(line):
+def insert_missing_bounding_apertures(line, machine):
     print('Inserting missing bounding apertures...')
     # Place aperture defintions around all active elements in order to ensure
     # the correct functioning of the aperture loss interpolation
     # the aperture definitions are taken from the nearest neighbour aperture in the line
     tab = line.get_table()
     needs_aperture = ['ThickSliceQuadrupole', 'Bend', 'ThinSliceBendEntry',
-                    'ThickSliceBend', 'ThinSliceBendExit', 'ThickSliceSextupole',
-                    'ZetaShift', 'Cavity', 'BeamInteraction']
+                      'ThickSliceBend', 'ThinSliceBendExit', 'ThickSliceSextupole',
+                      'ZetaShift', 'Cavity', 'BeamInteraction']
 
     s_pos = line.get_s_elements(mode='upstream')
     apert_idx, apertures = find_apertures(line)
@@ -333,23 +334,24 @@ def insert_missing_bounding_apertures(line):
     # TODO: fix this
     chicane_aper_names = []
     for (ii, jj), kk in zip(enumerate(idx), range(len(elems))):
-        if elem_names[kk].startswith(('bp2nrp.', 'bp1nrp.', '-bp1nrp.', '-bp2nrp.')):
-            # Chicane need separate treatment
-            arc_aper = xt.LimitEllipse(a=0.45, b=0.45)
-            line.insert_element(at=jj+1,
-                                element=arc_aper.copy(),
-                                name=elem_names[kk] + '_aper_end')
+        if machine == 'superkekb':
+            if elem_names[kk].startswith(('bp2nrp.', 'bp1nrp.', '-bp1nrp.', '-bp2nrp.')):
+                # Chicane need separate treatment
+                arc_aper = xt.LimitEllipse(a=0.45, b=0.45)
+                line.insert_element(at=jj+1,
+                                    element=arc_aper.copy(),
+                                    name=elem_names[kk] + '_aper_end')
 
-            line.insert_element(at=jj,
-                                element=arc_aper.copy(),
-                                name=elem_names[kk] + '_aper_start')
-            
-            chicane_aper_names.append(elem_names[kk]+'_aper_start')
-            chicane_aper_names.append(elem_names[kk]+'_aper_end')
-            
-            # Update bg_idx after insertion of two elements
-            idx[ii:] += 2
-            continue
+                line.insert_element(at=jj,
+                                    element=arc_aper.copy(),
+                                    name=elem_names[kk] + '_aper_start')
+                
+                chicane_aper_names.append(elem_names[kk]+'_aper_start')
+                chicane_aper_names.append(elem_names[kk]+'_aper_end')
+                
+                # Update bg_idx after insertion of two elements
+                idx[ii:] += 2
+                continue
 
         line.insert_element(at=jj+1,
                     element=aper_end[kk].copy(),
@@ -362,16 +364,17 @@ def insert_missing_bounding_apertures(line):
         # Update bg_idx after insertion of two elements
         idx[ii:] += 2
 
-    # Shift missing chicane aperture
-    line.build_tracker()
-    tw = line.twiss()
-    line.discard_tracker()
-    x_shift = tw['x', chicane_aper_names]
+    if machine == 'superkekb':
+        # Shift missing chicane aperture
+        line.build_tracker()
+        tw = line.twiss()
+        line.discard_tracker()
+        x_shift = tw['x', chicane_aper_names]
 
-    for ii, nn in enumerate(chicane_aper_names):
-        if abs(x_shift[ii]) > 1e-2:
-            line[nn].shift_x = x_shift[ii]
-            line[nn].shift_x = x_shift[ii]
+        for ii, nn in enumerate(chicane_aper_names):
+            if abs(x_shift[ii]) > 1e-2:
+                line[nn].shift_x = x_shift[ii]
+                line[nn].shift_x = x_shift[ii]
 
 # ===========================================
 # 🔹 Load and process line
@@ -448,7 +451,15 @@ def load_and_process_line(config_dict):
     # Insert beam-beam lenses if any are specified:
     _insert_beambeam_elements(line, config_dict, twiss, (emittance['x'], emittance['y']))
 
-    if config.scenario == 'beamgas':
+    if config.scenario == 'collimation':
+        s0 = 0
+        start_element = config_dict['dist'].get('start_element', None)
+        if start_element is not None:
+            s0 = line.get_s_position(at_elements=start_element, mode='upstream')
+
+        return line, twiss, ref_part, start_element, s0
+
+    elif config.scenario == 'beamgas':
         #########################################
         # Beam-gas (via Xgas module)
         #########################################
@@ -472,8 +483,8 @@ def load_and_process_line(config_dict):
         print('Done installing beam-gas elements.')
 
         # TODO: make this more general (seems to be required only when using thick lines)
-        if 'superkekb' in inp['machine']:
-            insert_missing_bounding_apertures(line)
+        if 'superkekb' or 'dafne' in inp['machine']:
+            insert_missing_bounding_apertures(line, inp['machine'])
         # aper_check = line.check_aperture()
 
         # Twiss again to get the optics at the beam-gas elements
@@ -490,14 +501,41 @@ def load_and_process_line(config_dict):
 
         return line, twiss, ref_part, bgman, start_element, s0
     
-    elif config.scenario == 'collimation':
-        s0 = 0
-        start_element = config_dict['dist'].get('start_element', None)
-        if start_element is not None:
-            s0 = line.get_s_position(at_elements=start_element, mode='upstream')
+    elif config.scenario == 'touschek':
+        #########################################
+        # Touschek (via Xtouschek Python module)
+        #########################################
+        touschek_opt = inp['touschek_options']
 
-        return line, twiss, ref_part, start_element, s0
-    
+        seed = run.get('seed') # In sumbit mode seed is the job_id and starts from 1
+        if seed >= touschek_opt['n_elems']:
+            raise ValueError(f"Seed {seed} is larger than the number of elements {touschek_opt['n_elems']}.\n \
+                               In the Touschek simulations the seed is used to select one of the Touschek scattering centers.\n \
+                               Please select a seed smaller than {touschek_opt['n_elems']}.")
+        element = f"TMarker_{seed-1}" # Touschek scattering centers are counted from 0
+
+        print('Initialising Touschek manager...')
+        # Initialise Touschek manager
+        touschek_manager = xtt.TouschekManager(line=line,
+                                               n_elems=touschek_opt['n_elems'],
+                                               nemitt_x=emittance['x'],
+                                               nemitt_y=emittance['y'],
+                                               sigma_z=beam['sigma_z'],
+                                               sigma_delta=beam['sigma_delta'],
+                                               kb=beam['bunch_population'], 
+                                               n_part_mc=touschek_opt['n_part_mc'],
+                                               delta_min=touschek_opt['delta_min'],
+                                               )
+        print('Done initialising Touschek manager.')
+
+        touschek_manager.initialise_touschek(element=element)
+
+        # TODO: make this more general (seems to be required only when using thick lines)
+        if 'superkekb' or 'dafne' in inp['machine']:
+            insert_missing_bounding_apertures(line, inp['machine'])
+
+        return line, touschek_manager, element
+
     else:
-        raise ValueError(f'Unknown scenario: {config.scenario}. The supported scenarios are: collimation, beamgas.')
+        raise ValueError(f'Unknown scenario: {config.scenario}. The supported scenarios are: collimation, beamgas, touschek.')
 

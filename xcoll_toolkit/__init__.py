@@ -11,7 +11,7 @@ Version: 0.1.0.dev1
 
 __version__ = "0.1.0.dev1"
 
-from .config import config, COLLIMATION_CONF_SCHEMA, BEAMGAS_CONF_SCHEMA
+from .config import config, COLLIMATION_CONF_SCHEMA, BEAMGAS_CONF_SCHEMA, TOUSCHEK_CONF_SCHEMA
 from .utils import load_config, _save_particles_hdf, save_impacts, save_beamgas_log
 from .lattice import load_and_process_line, _configure_tracker_radiation, deactivate_bg_elems
 from .beam import prepare_particles
@@ -24,6 +24,7 @@ __all__ = [
     "config",
     "COLLIMATION_CONF_SCHEMA",
     "BEAMGAS_CONF_SCHEMA",
+    "TOUSCHEK_CONF_SCHEMA",
     "load_config",
     "_save_particles_hdf",
     "save_impacts",

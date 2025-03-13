@@ -5,6 +5,9 @@ Author(s): Giacomo Broggi, Andrey Abramov
 Email:  giacomo.broggi@cern.ch
 Date:   12-03-2025
 """
+# ===========================================
+# 🔹 Required modules
+# ===========================================
 import numpy as np
 import pandas as pd
 import xtrack as xt
@@ -13,6 +16,9 @@ import periodictable as pt
 
 from scipy.constants import physical_constants
 
+# ===========================================
+# 🔹 Constants
+# ===========================================
 ELECTRON_MASS_EV = xt.ELECTRON_MASS_EV
 EV_TO_MEV = 1E-6
 MEV_TO_EV = 1E6

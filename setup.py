@@ -30,6 +30,7 @@ setup(
         "console_scripts": [
             "run_collimation=xcoll_toolkit.scripts.run_collimation:main",
             "run_beamgas=xcoll_toolkit.scripts.run_beamgas:main",
+            "run_touschek=xcoll_toolkit.scripts.run_touschek:main",
         ],
     },
 )

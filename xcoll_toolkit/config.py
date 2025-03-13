@@ -63,6 +63,19 @@ BEAMGAS_INPUT_SCHEMA = Schema({
                               Optional('material_rename_map', default={}): Schema({str: str}),
                               })
 
+TOUSCHEK_OPTIONS_SCHEMA = Schema({'n_elems': Use(to_int),
+                                 'n_part_mc': Use(to_int),
+                                 'delta_min': Use(to_float),
+                                 })
+TOUSCHEK_INPUT_SCHEMA = Schema({
+                              'machine': str,
+                              'xtrack_line': And(str, os.path.exists),
+                              'collimator_file': And(str, os.path.exists),
+                              'bdsim_config': And(str, os.path.exists),
+                              'touschek_options': TOUSCHEK_OPTIONS_SCHEMA,
+                              Optional('material_rename_map', default={}): Schema({str: str}),
+                              })
+
 COLLIMATION_BEAM_SCHEMA = Schema({'particle': str,
                       'momentum': Use(to_float),
                       'emittance': Or(Use(to_float), {'x': Use(to_float), 'y': Use(to_float)}),
@@ -91,6 +104,15 @@ BEAMGAS_BEAM_SCHEMA = Schema({'particle': str,
                       'emittance': Or(Use(to_float), {'x': Use(to_float), 'y': Use(to_float)}),
                       'sigma_z': Use(to_float),
                       })
+
+TOUSCHEK_BEAM_SCHEMA = Schema({'particle': str,
+                      'momentum': Use(to_float),
+                      'emittance': Or(Use(to_float), {'x': Use(to_float), 'y': Use(to_float)}),
+                      'sigma_z': Use(to_float),
+                      'sigma_delta': Use(to_float),
+                      'bunch_population': Use(to_float)
+                      })
+
 DIST_SCHEMA = Schema({'source': And(str, lambda s: s in ('internal', 'xsuite')),
              Optional('start_element', default=None): Or(str.lower, None),
              Optional('initial_store_file', default=None): Or(str.lower, None),
@@ -162,6 +184,13 @@ COLLIMATION_CONF_SCHEMA = Schema({'input': COLLIMATION_INPUT_SCHEMA,
 
 BEAMGAS_CONF_SCHEMA = Schema({'input': BEAMGAS_INPUT_SCHEMA,
                       'beam': BEAMGAS_BEAM_SCHEMA,
+                      'run': RUN_SCHEMA,
+                      Optional('lossmap'): LOSSMAP_SCHEMA,
+                      Optional('jobsubmission'): JOB_SUBMIT_SCHEMA,
+                      Optional(object): object})  # Allow input flexibility with extra keys
+
+TOUSCHEK_CONF_SCHEMA = Schema({'input': TOUSCHEK_INPUT_SCHEMA,
+                      'beam': TOUSCHEK_BEAM_SCHEMA,
                       'run': RUN_SCHEMA,
                       Optional('lossmap'): LOSSMAP_SCHEMA,
                       Optional('jobsubmission'): JOB_SUBMIT_SCHEMA,
