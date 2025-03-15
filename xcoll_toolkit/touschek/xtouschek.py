@@ -320,19 +320,24 @@ class TouschekCalculator():
         line = self.manager.line
         T_rev0 = self.twiss.T_rev0
 
+        tab = line.get_table()
+
         ii_tmarker = []
         for ii, nn in enumerate(line.element_names):
             if nn.startswith('TMarker_'):
                 ii_tmarker.append(ii)
 
         ii_current_tmarker = 0
+        s_before = 0
         integrated_rate = 0
-        for ii, ee in enumerate(line.elements):
+        for (ii, ee), nn in zip(enumerate(line.elements), line.element_names):
+            s = tab.rows[tab.name == nn].s[0]
             if ii < ii_tmarker[ii_current_tmarker]:
-                if hasattr(ee, 'length'):
-                    rate = self._compute_piwinski_total_scattering_rate(line.element_names[ii])
-                    integrated_rate += rate * ee.length
-                else:
+                if s > s_before:
+                    ds = s - s_before
+                    s_before = s
+                    rate = self._compute_piwinski_total_scattering_rate(nn)
+                    integrated_rate += rate * ds
                     continue
             else:
                 self.integrated_piwinski_total_scattering_rates[f'TMarker_{ii_current_tmarker}'] = integrated_rate / C_LIGHT_VACUUM / T_rev0
