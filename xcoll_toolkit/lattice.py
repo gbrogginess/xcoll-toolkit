@@ -508,7 +508,7 @@ def load_and_process_line(config_dict):
         touschek_opt = inp['touschek_options']
 
         seed = run.get('seed') # In sumbit mode seed is the job_id and starts from 1
-        if seed >= touschek_opt['n_elems']:
+        if seed > touschek_opt['n_elems']:
             raise ValueError(f"Seed {seed} is larger than the number of elements {touschek_opt['n_elems']}.\n \
                                In the Touschek simulations the seed is used to select one of the Touschek scattering centers.\n \
                                Please select a seed smaller than {touschek_opt['n_elems']}.")
