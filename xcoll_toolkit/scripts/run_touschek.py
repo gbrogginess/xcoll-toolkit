@@ -13,6 +13,7 @@ import sys
 import json
 import time
 import numpy as np
+import xobjects as xo
 import xcoll as xc
 
 from pathlib import Path
@@ -47,7 +48,7 @@ def run(config_file_path, config_dict):
     # 🔹 Take Touschek scattered distribution
     # ===========================================
     touschek_dict = touschek_manager.touschek_dict
-    particles = touschek_dict[start_elem]['particles'].copy()
+    particles = touschek_dict[start_elem]['particles']
 
     # ===========================================
     # 🔹 Configure the tracker with radiation settings
@@ -69,14 +70,14 @@ def run(config_file_path, config_dict):
     # ===========================================
     t0 = time.time()
 
-    # Start interaction record
-    impacts = xc.InteractionRecord.start(line=line)
-    # Start the Geant4 engine
-    xc.Geant4Engine.start(line=line,
-                          seed=config_dict['run']['seed'],
-                          bdsim_config_file=config_dict['input']['bdsim_config'])
-    # Enable scattering
-    line.scattering.enable()
+    # # Start interaction record
+    # impacts = xc.InteractionRecord.start(line=line)
+    # # Start the Geant4 engine
+    # xc.Geant4Engine.start(line=line,
+    #                       seed=config_dict['run']['seed'],
+    #                       bdsim_config_file=config_dict['input']['bdsim_config'])
+    # # Enable scattering
+    # line.scattering.enable()
     
     # Track particles
     print(f'\nTrack particles scattered at {start_elem}. \n')
@@ -89,12 +90,12 @@ def run(config_file_path, config_dict):
             print(f'All particles lost by turn {turn}, teminating.')
             break
 
-    # Disable scattering
-    line.scattering.disable()
-    # Stop the Geant4 engine
-    xc.Geant4Engine.stop()
-    # Stop interaction record
-    impacts.stop()
+    # # Disable scattering
+    # line.scattering.disable()
+    # # Stop the Geant4 engine
+    # xc.Geant4Engine.stop()
+    # # Stop interaction record
+    # impacts.stop()
 
     print(f'\nTracking {nturns} turns done in: {time.time()-t0} s\n')
 
@@ -108,10 +109,10 @@ def run(config_file_path, config_dict):
         # If the output directory does not exist, create it
         os.makedirs(output_dir)
 
-    # ===========================================
-    # 🔹 Save impacts table
-    # ===========================================
-    save_impacts(output_dir, impacts)
+    # # ===========================================
+    # # 🔹 Save impacts table
+    # # ===========================================
+    # save_impacts(output_dir, impacts)
 
     # ===========================================
     # 🔹 Save Touschek log
@@ -190,7 +191,7 @@ def main():
     elif sys.argv[1] == '--merge':
         match_pattern = '*part.hdf*'
         output_file = 'part_merged.hdf'
-        merge(sys.argv[2], output_file, match_pattern=match_pattern, load_particles=True)
+        merge(sys.argv[2], output_file, match_pattern=match_pattern, load_lossmap=False, load_particles=True)
     else:
         raise ValueError('The mode must be one of --run, --submit, --submit_local, --merge, --merge_photons')
     

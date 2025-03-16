@@ -428,13 +428,13 @@ def load_and_process_line(config_dict):
         line.build_tracker()
         line.discard_tracker()
 
-    colldb = load_colldb(inp['collimator_file'], emittance)
+    # colldb = load_colldb(inp['collimator_file'], emittance)
     
-    colldb.install_geant4_collimators(line=line, verbose=True)
+    # colldb.install_geant4_collimators(line=line, verbose=True)
 
     _configure_tracker_radiation(line, radiation_mode, for_optics=True)
     twiss = line.twiss(**config.XTRACK_TWISS_KWARGS)
-    line.collimators.assign_optics(twiss=twiss)
+    # line.collimators.assign_optics(twiss=twiss)
     line.discard_tracker()
 
     # Insert additional elements if any are specified:

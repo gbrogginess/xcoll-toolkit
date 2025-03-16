@@ -147,13 +147,13 @@ def load_output(directory, match_pattern='*part.hdf*',
                     
     return part_merged, lmd_merged, dirs_visited, files_loaded
 
-def merge(directory, output_file, match_pattern='*part.hdf*', load_particles=True):
+def merge(directory, output_file, match_pattern='*part.hdf*', load_lossmap=True, load_particles=True):
     output_file = Path(output_file)
     t0 = time.time()
     part_merged, lmd_merged, dirs_visited, files_loaded = load_output(directory,
                                                                       match_pattern=match_pattern,
                                                                       load_particles=load_particles,
-                                                                      load_lossmap=True)
+                                                                      load_lossmap=load_lossmap)
     
     _save_particles_hdf(output_file, part_merged, lmd_merged)
     print('Directories visited: {}, files loaded: {}'.format(
