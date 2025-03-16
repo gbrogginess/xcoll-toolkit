@@ -341,15 +341,19 @@ class TouschekCalculator():
                     s_before = s
                     rate = self._compute_piwinski_total_scattering_rate(nn)
                     integrated_rate += rate * ds
-                    continue
-            else:
-                self.integrated_piwinski_total_scattering_rates[f'TMarker_{ii_current_tmarker}'] = integrated_rate / C_LIGHT_VACUUM / T_rev0
-                # Reset the inegrated rate for the next Touschek marker
-                integrated_rate = 0
-                ii_current_tmarker += 1
-
-                if ii_current_tmarker >= len(ii_tmarker):
-                    break
+            elif ii == ii_tmarker[ii_current_tmarker]:
+                if s > s_before:
+                    ds = s - s_before
+                    s_before = s
+                    rate = self._compute_piwinski_total_scattering_rate(nn)
+                    integrated_rate += rate * ds
+                    self.integrated_piwinski_total_scattering_rates[f'TMarker_{ii_current_tmarker}'] = integrated_rate / C_LIGHT_VACUUM / T_rev0
+                    # Reset the integrated rate for the next Touschek marker
+                    integrated_rate = 0
+                    ii_current_tmarker += 1
+                    
+                    if ii_current_tmarker >= len(ii_tmarker):
+                        break
 
 
     def compute_total_scattering_rate(self, phase_space_volume, dens1, dens2):
