@@ -9,7 +9,6 @@ Date:   13-03-2025
 # 🔹 Required modules
 # ===========================================
 import xtrack as xt
-import xpart as xp
 import xcoll as xc
 import numpy as np
 import re
@@ -31,6 +30,7 @@ class TouschekCalculator():
         self.manager = manager
         self.p0c = self.manager.ref_particle.p0c[0]
         self.npart_over_two = int(self.manager.n_part_mc / 2)
+        self.local_momentum_aperture = None
         self.PP1 = None
         self.mask_PP1 = None
         self.PP2 = None
@@ -270,7 +270,8 @@ class TouschekCalculator():
         beta0 = self.manager.ref_particle.beta0[0]
         gamma0 = self.manager.ref_particle.gamma0[0]
         kb = self.manager.kb
-        delta_min = self.manager.delta_min
+        fdelta = self.manager.fdelta
+        local_momentum_aperture = self.local_momentum_aperture
         gemitt_x = self.manager.nemitt_x / beta0 / gamma0
         alfx = self.twiss['alfx', element]
         betx = self.twiss['betx', element]
@@ -286,6 +287,8 @@ class TouschekCalculator():
         dy = self.twiss['dy', element]
         dpy = self.twiss['dpy', element]
         dyt = alfy * dy + bety * dpy # dyt: dy tilde
+
+        delta_min = local_momentum_aperture[element] * fdelta
 
         sigmab_x = np.sqrt(gemitt_x * betx) # Horizontal betatron beam size
         sigma_x = np.sqrt(gemitt_x * betx + dx**2 * sigma_delta**2) # Horizontal beam size
@@ -350,7 +353,8 @@ class TouschekCalculator():
 
 
     def compute_total_scattering_rate(self, phase_space_volume, dens1, dens2):
-        delta_min = self.manager.delta_min
+        fdelta = self.manager.fdelta
+        delta_min = self.local_momentum_aperture[self.element] * fdelta
         mask_PP1 = abs(self.PP1[:,5]) > delta_min
         mask_PP2 = abs(self.PP2[:,5]) > delta_min
         self.mask_PP1 = mask_PP1
@@ -367,11 +371,11 @@ class TouschekCalculator():
         piwinski_total_scattering_rate = self._compute_piwinski_total_scattering_rate(self.element)
 
         # mc_to_piwinski_ratio = total_scattering_rate_mc / piwinski_total_scattering_rate
-
         # print(f'\nMC to Piwinski ratio: {mc_to_piwinski_ratio}\n')
 
         integrated_piwinski_total_scattering_rate = self.integrated_piwinski_total_scattering_rates[self.element]
 
+        # TODO: check if better to normalize over total_scattering_rate_mc or piwinski_total_scattering_rate
         total_scattering_rate1 = local_scattering_rate1[mask_PP1] / total_scattering_rate_mc * integrated_piwinski_total_scattering_rate
         total_scattering_rate2 = local_scattering_rate2[mask_PP2] / total_scattering_rate_mc * integrated_piwinski_total_scattering_rate
 
@@ -381,8 +385,9 @@ class TouschekCalculator():
 
 
 class TouschekManager:
-    def __init__(self, line, n_elems, nemitt_x, nemitt_y, sigma_z, sigma_delta, kb, n_part_mc, delta_min=0.005, nx=3, ny=3, nz=3):
+    def __init__(self, line, local_momaper, n_elems, nemitt_x, nemitt_y, sigma_z, sigma_delta, kb, n_part_mc, fdelta=0.85, nx=3, ny=3, nz=3):
         self.line = line
+        self.local_momaper = local_momaper
         self.ref_particle = line.particle_ref
         self.n_elems = n_elems
         self.nemitt_x = nemitt_x
@@ -391,7 +396,7 @@ class TouschekManager:
         self.sigma_delta = sigma_delta
         self.kb = kb
         self.n_part_mc = n_part_mc
-        self.delta_min = delta_min
+        self.fdelta = fdelta
         self.nx = nx
         self.ny = ny
         self.nz = nz
@@ -449,6 +454,49 @@ class TouschekManager:
         self.line._insert_thin_elements_at_s([(s_elem, [(key, touschek_markers_dict[key])]) for s_elem, key in zip(s, touschek_markers_dict.keys())])
 
         print('Done.\n')
+
+
+    def _compute_local_momentum_aperture(self, delta_min=-0.02, delta_max=0.02, delta_step=0.001, n_turns=100):
+        line = self.line
+        ref_particle = self.ref_particle
+        nemitt_x = self.nemitt_x
+        nemitt_y = self.nemitt_y
+
+        tab = line.get_table()
+        elements = tab.rows['TMarker.*'].name
+        s_tmarkers = tab.rows['TMarker.*'].s
+
+        delta = np.arange(delta_min, delta_max, delta_step)
+
+        delta_min = []
+        for ee in elements:
+            print(f'Computing local momentum aperture at {ee} with tracking...')
+            particles = line.build_particles(
+                particle_ref=ref_particle,
+                x_norm=np.zeros(len(delta)), px_norm=np.zeros(len(delta)),
+                y_norm=np.zeros(len(delta)), py_norm=np.zeros(len(delta)),
+                nemitt_x=nemitt_x, nemitt_y=nemitt_y,
+                at_element=ee
+            )
+
+            particles.delta += delta
+            initial_deltas = particles.delta.copy()
+            particles.start_tracking_at_element = -1
+
+            line.track(particles, ele_start=ee, ele_stop=ee, num_turns=n_turns)
+
+            surviving_pids = particles.filter(particles.state == 1).particle_id
+
+            delta_min.append(
+                min(abs(min(initial_deltas[surviving_pids])),
+                    abs(max(initial_deltas[surviving_pids])))
+                    )
+            
+        delta_min = np.array(delta_min)
+
+        delta_min_interp = np.interp(tab.s, s_tmarkers, delta_min)
+
+        return dict(zip(tab.name, delta_min_interp))
 
 
     def _generate_coord_and_compute_density(self, twiss, element):
@@ -575,6 +623,17 @@ class TouschekManager:
 
         # Pass the twiss table to the TouschekCalculator
         self.touschek.twiss = twiss
+
+        if self.local_momaper is None:
+            # If not provided as input, estimate local momentum aperture and pass it to the TouschekCalculator
+            print('\nPrecomputed local momentum aperture not provided.')
+            print('Computing local momentum aperture...')
+            local_momentum_aperture = self._compute_local_momentum_aperture()
+            self.touschek.local_momentum_aperture = local_momentum_aperture
+        else:
+            # If provided as input, pass it to the TouschekCalculator
+            print('\nPrecomputed local momentum aperture provided.')
+            self.touschek.local_momentum_aperture = self.local_momaper
 
         # Assign the Piwikinski total scattering rate to each element with a length 
         # and to each Touschek marker

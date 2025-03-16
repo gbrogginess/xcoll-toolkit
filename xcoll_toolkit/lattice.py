@@ -516,7 +516,16 @@ def load_and_process_line(config_dict):
 
         print('Initialising Touschek manager...')
         # Initialise Touschek manager
+        local_momaper_fpath = touschek_opt.get('local_momentum_aperture', None)
+        if local_momaper_fpath is not None:
+            import json
+            with open(local_momaper_fpath, 'r') as f:
+                local_momaper = json.load(f)
+        else:
+            local_momaper = None
+
         touschek_manager = xtt.TouschekManager(line=line,
+                                               local_momaper=local_momaper,
                                                n_elems=touschek_opt['n_elems'],
                                                nemitt_x=emittance['x'],
                                                nemitt_y=emittance['y'],
@@ -524,7 +533,7 @@ def load_and_process_line(config_dict):
                                                sigma_delta=beam['sigma_delta'],
                                                kb=beam['bunch_population'], 
                                                n_part_mc=touschek_opt['n_part_mc'],
-                                               delta_min=touschek_opt['delta_min'],
+                                               fdelta=touschek_opt['fdelta'],
                                                )
         print('Done initialising Touschek manager.')
 

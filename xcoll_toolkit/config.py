@@ -65,7 +65,8 @@ BEAMGAS_INPUT_SCHEMA = Schema({
 
 TOUSCHEK_OPTIONS_SCHEMA = Schema({'n_elems': Use(to_int),
                                  'n_part_mc': Use(to_int),
-                                 'delta_min': Use(to_float),
+                                 Optional('local_momentum_aperture'): And(str, os.path.exists),
+                                 'fdelta': Use(to_float),
                                  })
 TOUSCHEK_INPUT_SCHEMA = Schema({
                               'machine': str,

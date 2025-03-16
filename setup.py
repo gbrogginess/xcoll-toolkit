@@ -31,6 +31,7 @@ setup(
             "run_collimation=xcoll_toolkit.scripts.run_collimation:main",
             "run_beamgas=xcoll_toolkit.scripts.run_beamgas:main",
             "run_touschek=xcoll_toolkit.scripts.run_touschek:main",
+            "local_momaper=xcoll_toolkit.scripts.local_momaper:main",
         ],
     },
 )
