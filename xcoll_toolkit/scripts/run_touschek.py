@@ -10,6 +10,7 @@ Date:   13-03-2025
 # ===========================================
 import os
 import sys
+import json
 import time
 import numpy as np
 import xcoll as xc
@@ -115,7 +116,18 @@ def run(config_file_path, config_dict):
     # ===========================================
     # 🔹 Save Touschek log
     # ===========================================
-    # TODO: Implement Touschek log ?
+    tab = line.get_table()
+    s_start_elem = tab.rows[tab.name == start_elem].s[0]
+    touschek_log = {
+        'element': start_elem,
+        's': s_start_elem,
+        'mc_rate': touschek_dict[start_elem]['mc_rate'],
+        'piwinski_rate': touschek_dict[start_elem]['piwinski_rate'],
+        'mc_to_piwinski_ratio': touschek_dict[start_elem]['mc_to_piwinski_ratio']
+    }
+    fpath = output_dir / 'touschek_log.json'
+    with open(fpath, 'w') as f:
+        json.dump(touschek_log, f, indent=4)
 
     # ===========================================
     # 🔹 Perform loss interpolation and make Xcoll loss map
