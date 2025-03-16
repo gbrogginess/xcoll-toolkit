@@ -11,6 +11,7 @@ Date:   12-03-2025
 import random
 import numpy as np
 import pandas as pd
+import xobjects as xo
 import xtrack as xt
 import xfields as xf
 import xcoll as xc
@@ -68,7 +69,7 @@ def _configure_tracker_radiation(line, radiation_model, beamstrahlung_model=None
 
     if line.tracker is None:
         print('\n')
-        line.build_tracker()
+        line.build_tracker(_context=xo.ContextCpu(omp_num_threads='auto'))
 
     if radiation_model == 'mean':
         if for_optics:
