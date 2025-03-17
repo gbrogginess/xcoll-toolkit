@@ -68,8 +68,12 @@ def _configure_tracker_radiation(line, radiation_model, beamstrahlung_model=None
     _bhabha_model = None if bhabha_model == 'off' else bhabha_model
 
     if line.tracker is None:
-        print('\n')
-        line.build_tracker(_context=xo.ContextCpu(omp_num_threads='auto'))
+        if for_optics:
+            print('\n')
+            line.build_tracker()
+        else:
+            print('\n')
+            line.build_tracker(_context=xo.ContextCpu(omp_num_threads='auto'))
 
     if radiation_model == 'mean':
         if for_optics:
@@ -429,13 +433,13 @@ def load_and_process_line(config_dict):
         line.build_tracker()
         line.discard_tracker()
 
-    # colldb = load_colldb(inp['collimator_file'], emittance)
+    colldb = load_colldb(inp['collimator_file'], emittance)
     
-    # colldb.install_geant4_collimators(line=line, verbose=True)
+    colldb.install_geant4_collimators(line=line, verbose=True)
 
     _configure_tracker_radiation(line, radiation_mode, for_optics=True)
     twiss = line.twiss(**config.XTRACK_TWISS_KWARGS)
-    # line.collimators.assign_optics(twiss=twiss)
+    line.collimators.assign_optics(twiss=twiss)
     line.discard_tracker()
 
     # Insert additional elements if any are specified:
