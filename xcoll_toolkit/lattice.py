@@ -336,51 +336,254 @@ def insert_missing_bounding_apertures(line, machine):
     else:
         aper_end = apertures[apert_idx_end]
 
-    # TODO: fix this
-    chicane_aper_names = []
-    for (ii, jj), kk in zip(enumerate(idx), range(len(elems))):
-        if machine == 'superkekb':
-            if elem_names[kk].startswith(('bp2nrp.', 'bp1nrp.', '-bp1nrp.', '-bp2nrp.')):
-                # Chicane need separate treatment
-                arc_aper = xt.LimitEllipse(a=0.45, b=0.45)
-                line.insert_element(at=jj+1,
-                                    element=arc_aper.copy(),
-                                    name=elem_names[kk] + '_aper_end')
+def install_apertures(line, machine):
+    if machine == 'superkekb_ler':
+        ################################
+        # Constants
+        ################################
+        HALF_XING_RAD_LER = 0.0415
 
-                line.insert_element(at=jj,
-                                    element=arc_aper.copy(),
-                                    name=elem_names[kk] + '_aper_start')
-                
-                chicane_aper_names.append(elem_names[kk]+'_aper_start')
-                chicane_aper_names.append(elem_names[kk]+'_aper_end')
-                
-                # Update bg_idx after insertion of two elements
-                idx[ii:] += 2
+        R_BEAMPIPE_ARC = 0.045 # m
+        R_BEAMPIPE_IR = 0.040 # m
+
+        SKEKB_IR_REGION = np.array([1506.821657423536 - 26.23,
+                                    1506.821657423536 + 27.50])
+        
+        #################################
+        # Auxiliary Functions
+        #################################
+        def add_bounding_apertures(name, idx, entry_aper, exit_aper, aper_dict, idx_aper):
+            idx_aper.append(idx-1)
+            aper_dict[name + '_aper_entry'] = entry_aper.copy()
+            idx_aper.append(idx)
+            aper_dict[name + '_aper_exit'] = exit_aper.copy()
+
+        def insert_apertures(line, idx_aper, aper_dict):
+            shift = 0
+            for idx, (aper_name, aper) in zip(idx_aper, aper_dict.items()):
+                adjusted_idx = idx + shift  # Adjust index to account for prior insertions
+                line.insert_element(at=adjusted_idx + 1, name=aper_name, element=aper)
+                shift += 1  # Each insertion shifts future indices by 1
+
+        ########################################
+        # Get line table
+        ########################################
+        # tab = line.get_table(attr=True) # attr=True is broken after installing collimators
+        tab = line.get_table()
+
+        ########################################
+        # Load IR aperture dataframe
+        ########################################
+        from pathlib import Path
+        fpath = Path(__file__).resolve() / "../../data/aperture/SuperKEKB_LER_IR_aperture.csv"
+        df_aper_ir = pd.read_csv(fpath.resolve())
+
+        ########################################
+        # Center IR aperture at the IP position
+        ########################################
+        s_ip = tab.rows['ip.1'].s[0]
+        df_aper_ir['s'] = s_ip + df_aper_ir['s']
+
+        ########################################
+        # Make a copy of the line before installing apertures
+        ########################################
+        line_noaper = line.copy()
+
+        ########################################
+        # Get lists of IR and arc magnets
+        ########################################
+        magnet_types = {'Bend', 'ThickSliceBend', 'ThinSliceBendEntry', 'ThinSliceBendExit', 'ThickSliceQuadrupole', 'ThickSliceSextupole'}
+        ir_magnets = set()
+        arc_magnets = set()
+
+        for nn, ee, s in zip(tab.name, tab.element_type, tab.s):
+            # TODO: use a more elegant approach here
+            if ee in magnet_types and (s >= SKEKB_IR_REGION[0] and s <= SKEKB_IR_REGION[1]):
+                ir_magnets.add(nn)
+            elif ee in magnet_types and (s < SKEKB_IR_REGION[0] or s > SKEKB_IR_REGION[1]):
+                arc_magnets.add(nn)
+
+        ########################################
+        # Install dummy apertures at the correct locations
+        ########################################
+        dummy_aper = xt.LimitEllipse(a=1.0, b=1.0)
+
+        needs_aperture = {
+            'Cavity', 'Solenoid', 'ThickSliceSolenoid', 'ZetaShift'
+        }
+
+        idx_aper = []
+        aper_dict = {}
+        for idx, (nn, ee) in enumerate(zip(tab.name, tab.element_type)):
+            if nn in arc_magnets or nn in ir_magnets or ee in needs_aperture:
+                add_bounding_apertures(nn, idx, dummy_aper, dummy_aper, aper_dict, idx_aper)
+
+        insert_apertures(line, idx_aper, aper_dict)
+
+        ########################################
+        # Twiss line with dummy apertures to get optics at aperture locations
+        ########################################
+        tw_aper = line.twiss()
+
+        ########################################
+        # Restore th line without apertures
+        ########################################
+        line = line_noaper.copy()
+
+        ########################################
+        # Install real apertures
+        ########################################
+        ir_aper = xt.LimitEllipse(a=R_BEAMPIPE_IR, b=R_BEAMPIPE_IR)
+        arc_aper = xt.LimitEllipse(a=R_BEAMPIPE_ARC, b=R_BEAMPIPE_ARC)
+
+        # Pre-compute solenoid aperture data
+        mask_sol = (tab.element_type == 'Solenoid') | (tab.element_type == 'ThickSliceSolenoid')
+        sol_names = tab.rows[mask_sol].name
+
+        s_sol_aper_entry = tab.rows[mask_sol].s
+        l_sol_elements = tab.rows[mask_sol].s_end - tab.rows[mask_sol].s_start
+        s_sol_aper_exit = s_sol_aper_entry + l_sol_elements
+
+        sol_aper_x_entry = np.interp(s_sol_aper_entry, df_aper_ir['s'], df_aper_ir['aper_x'])
+        sol_aper_y_entry = np.interp(s_sol_aper_entry, df_aper_ir['s'], df_aper_ir['aper_y'])
+        # The minus sign in the shifts is because of SAD vs. Xsuite coordinate system
+        sol_aper_entry_shift_x = - np.interp(s_sol_aper_entry, df_aper_ir['s'], df_aper_ir['aper_shift_x'])
+        sol_aper_entry_shift_y = - np.interp(s_sol_aper_entry, df_aper_ir['s'], df_aper_ir['aper_shift_y'])
+
+        sol_aper_x_exit = np.interp(s_sol_aper_exit, df_aper_ir['s'], df_aper_ir['aper_x'])
+        sol_aper_y_exit = np.interp(s_sol_aper_exit, df_aper_ir['s'], df_aper_ir['aper_y'])
+        # The minus sign in the shifts is because of SAD vs. Xsuite coordinate system
+        sol_aper_exit_shift_x = - np.interp(s_sol_aper_exit, df_aper_ir['s'], df_aper_ir['aper_shift_x'])
+        sol_aper_exit_shift_y = - np.interp(s_sol_aper_exit, df_aper_ir['s'], df_aper_ir['aper_shift_y'])
+
+        sol_aper_df = pd.DataFrame({
+            'name': sol_names,
+            'aper_x_entry': sol_aper_x_entry,
+            'aper_y_entry': sol_aper_y_entry,
+            'shift_x_entry': sol_aper_entry_shift_x,
+            'shift_y_entry': sol_aper_entry_shift_y,
+            'aper_x_exit': sol_aper_x_exit,
+            'aper_y_exit': sol_aper_y_exit,
+            'shift_x_exit': sol_aper_exit_shift_x,
+            'shift_y_exit': sol_aper_exit_shift_y,
+        }).set_index('name')  # Set index to enable fast lookups
+
+        idx_aper = []
+        aper_dict = {}
+        for idx, (nn, ee) in enumerate(zip(tab.name, tab.element_type)):
+            # ARC magnets
+            if nn in arc_magnets:
+                add_bounding_apertures(nn, idx, arc_aper, arc_aper, aper_dict, idx_aper)
+                continue
+            # IR magnets
+            elif nn in ir_magnets:
+                add_bounding_apertures(nn, idx, ir_aper, ir_aper, aper_dict, idx_aper)
+                continue
+            # Cavities, Bends
+            elif ee == 'Cavity':
+                add_bounding_apertures(nn, idx, arc_aper, arc_aper, aper_dict, idx_aper)
+                continue
+            elif ee == 'Solenoid' or ee == 'ThickSliceSolenoid':
+                sol_data = sol_aper_df.loc[nn]
+
+                aper_entry = xt.LimitEllipse(
+                    a=sol_data.aper_x_entry,
+                    b=sol_data.aper_y_entry
+                )
+                aper_entry.shift_x += sol_data.shift_x_entry
+                aper_entry.shift_y += sol_data.shift_y_entry
+
+                aper_exit = xt.LimitEllipse(
+                    a=sol_data.aper_x_exit,
+                    b=sol_data.aper_y_exit
+                )
+                aper_exit.shift_x += sol_data.shift_x_exit
+                aper_exit.shift_y += sol_data.shift_y_exit
+
+                add_bounding_apertures(nn, idx, aper_entry, aper_exit, aper_dict, idx_aper)
                 continue
 
-        line.insert_element(at=jj+1,
-                    element=aper_end[kk].copy(),
-                    name=elem_names[kk] + '_aper_end')
+            # ZetaShifts
+            elif ee == 'ZetaShift' and 'sol' not in nn:
+                add_bounding_apertures(nn, idx, arc_aper, arc_aper, aper_dict, idx_aper)
+                continue
+            # IR ZetaShifts
+            elif ee == 'ZetaShift' and 'sol' in nn:
+                s_aper = tab.rows[nn].s[0]
+                aper_x = np.interp(s_aper, df_aper_ir['s'], df_aper_ir['aper_x'])
+                aper_y = np.interp(s_aper, df_aper_ir['s'], df_aper_ir['aper_y'])
+                aper = xt.LimitEllipse(a=aper_x, b=aper_y)
+                aper.shift_x = aper.shift_x - np.interp(s_aper, df_aper_ir['s'], df_aper_ir['aper_shift_x'])
+                aper.shift_y = aper.shift_y - np.interp(s_aper, df_aper_ir['s'], df_aper_ir['aper_shift_y'])
+                add_bounding_apertures(nn, idx, aper, aper, aper_dict, idx_aper)
+                continue
 
-        line.insert_element(at=jj,
-                            element=aper_start[kk].copy(),
-                            name=elem_names[kk] + '_aper_start')
-        
-        # Update bg_idx after insertion of two elements
-        idx[ii:] += 2
+        insert_apertures(line, idx_aper, aper_dict)
 
-    if machine == 'superkekb':
-        # Shift missing chicane aperture
-        line.build_tracker()
-        tw = line.twiss()
-        line.discard_tracker()
-        x_shift = tw['x', chicane_aper_names]
+        ########################################
+        # Update the line table after aperture installation
+        ########################################
+        tab = line.get_table()
 
-        for ii, nn in enumerate(chicane_aper_names):
-            if abs(x_shift[ii]) > 1e-2:
-                line[nn].shift_x = x_shift[ii]
-                line[nn].shift_x = x_shift[ii]
+        ########################################
+        # Apply shifts to chicane apertures
+        ########################################
+        names = np.asarray(tab.name, dtype=str)
+        mask_chicane_aper = (
+            (tab.element_type == 'LimitEllipse') & 
+            (np.char.startswith(names, 'bp') | np.char.startswith(names, '-bp'))
+        )
+        chicane_aper_names = tab.rows[mask_chicane_aper].name
+        # chicane_aper_names = ['bp1nrp_aper_entry', 'bp1nrp_aper_exit',
+        #                         '-bp1nrp_aper_entry', '-bp1nrp_aper_exit']
 
+        for aper_name in chicane_aper_names:
+            line[aper_name].shift_x = tw_aper['x', aper_name]
+
+
+        ########################################
+        # Apply shifts to account for individual solenoid transforms
+        ########################################
+        indiv_sol_s_start = tab.rows['start_indiv_sol_entry_transforms'].s[0]
+        indiv_sol_s_end = tab.rows['end_indiv_sol_exit_transforms'].s[0]
+
+        # NOTE: The x and y shifts are not the same at the entry and exit of the individual solenoid region
+        #       so we take the average
+        # TODO: check is this is accurate enough
+        indiv_sol_x_shift = np.mean([tw_aper['x', 'indiv_sol_entry_zeta_shift'],
+                                    tw_aper['x', 'indiv_sol_exit_zeta_shift']])
+
+        indiv_sol_y_shift = np.mean([tw_aper['y', 'indiv_sol_entry_zeta_shift'],
+                                    tw_aper['y', 'indiv_sol_exit_zeta_shift']])
+
+        mask_indiv_sol_aper = (tab.element_type == 'LimitEllipse') & (tab.s >= indiv_sol_s_start) & (tab.s <= indiv_sol_s_end)
+        indiv_sol_aper_names = tab.rows[mask_indiv_sol_aper].name
+
+        for nn in indiv_sol_aper_names:
+            line[nn].shift_x += indiv_sol_x_shift
+            line[nn].shift_y += indiv_sol_y_shift
+
+        ########################################
+        # Apply shifts to account for common solenoid transforms
+        ########################################
+        common_sol_s_start = tab.rows['start_common_sol_entry_transforms'].s[0]
+        common_sol_s_end = tab.rows['end_common_sol_exit_transforms'].s[0]
+
+        mask_common_sol_aper = (tab.element_type == 'LimitEllipse') & (tab.s >= indiv_sol_s_start) & (tab.s <= indiv_sol_s_end)
+        common_sol_aper_names = tab.rows[mask_common_sol_aper].name
+
+        for nn in common_sol_aper_names:
+            if nn.startswith('lqcrp3..0..0') or nn.startswith('lqclp3..0..1'):
+                continue  # Skip first and last detected elements
+
+            line[nn].shift_x += tw_aper['x', nn]
+            line[nn].a *= np.cos(HALF_XING_RAD_LER)
+
+            line[nn].shift_y += tw_aper['y', nn]
+            # b transfromation not needed in vertical because of absence of xing angle
+
+        return line
+    
 # ===========================================
 # 🔹 Load and process line
 # ===========================================
@@ -482,6 +685,15 @@ def load_and_process_line(config_dict):
                                   theta_lim=(beamgas_opt['theta_min'], beamgas_opt['theta_max']) # Coulomb scattering angle limits
                                   )
         print('Done initialising beam-gas manager.')
+
+        # TODO: improve this
+        if 'superkekb' in inp['machine']:
+            # Install apertures
+            print('Installing apertures...')
+            line = install_apertures(line, inp['machine'])
+        elif 'dafne' in inp['machine']:
+            insert_missing_bounding_apertures(line, inp['machine'])
+
         # Install beam-gas elements
         print('Installing beam-gas elements...')
         bgman.install_beam_gas_elements(line)
