@@ -522,8 +522,8 @@ class BeamGasManager():
         return dpx, dpy, delta
 
 
-class BeamGasElement():
-    def __init__(self, ds, local_gas_parameters, manager):
+class BeamGasElement(xt.BeamElement):
+    def __init__(self, ds, local_gas_parameters, manager, **kwargs):
         self.iscollective = True
         self.isthick = False
         self.ds = ds
@@ -534,6 +534,7 @@ class BeamGasElement():
         self.int_prob = [self.mfp_tot / _mfp for _mfp in self.mfp]
         self.mfp_step = self.ds / self.mfp_tot
         self.manager = manager
+        super().__init__(**kwargs)
 
     def track(self, particles):
         # Which particles are interacting
