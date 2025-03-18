@@ -378,36 +378,14 @@ class BeamGasManager():
         self.interaction_dist = dict(zip(active_part_ids, -np.log(self.rng.random(len(active_part_ids)))))
         self.part_initialised = True
 
-    def install_beam_gas_elements(self, line):
+    def install_beam_gas_markers(self, line):
         self.circumference = line.get_length()
-        ds_list = [self.density_df.s.iloc[0] + self.circumference - self.density_df.s.iloc[-1]] + list(np.diff(self.density_df.s))
-        dict_bg_elems = {}
+        dict_bg_markers = {}
         s = []
 
         for index, values in self.density_df.iterrows():
-            local_gas_params = {}
-
-            # Add eBrem parameters if eBrem is initialized
-            if self.eBrem is not None:
-                local_gas_params.update({
-                    f'{key}_eBrem': {'n': values[key], 'xsec': self.eBrem[key].compute_xsec()}
-                    for key in self.density_df.columns[1:]
-                })
-
-            # Add CoulombScat parameters if CoulombScat is initialized
-            if self.CoulombScat is not None:
-                local_gas_params.update({
-                    f'{key}_CoulombScat': {'n': values[key], 'xsec': self.CoulombScat[key].compute_xsec()}
-                    for key in self.density_df.columns[1:]
-                })
-
-            # Bias the cross-section parameters
-            local_gas_params = self.cross_section_biasing(local_gas_params)
-            dict_bg_elems[f'beam_gas_{index}'] = BeamGasElement(ds_list[index], local_gas_params, self)
+            dict_bg_markers[f'BGMarker_{index}'] = xt.Marker()
             s.append(values.s)
-        
-        self.bg_element_names = list(dict_bg_elems.keys())
-        BeamGasManager.df_interactions_log['name'] = self.bg_element_names.copy()
 
         coll_idx = []
         for idx, elem in enumerate(line.elements):
@@ -430,22 +408,136 @@ class BeamGasManager():
             # Check if elements in s_array fall between the upstream and downstream of any collimator
             mask_in_coll_region |= (s >= us) & (s <= ds)
 
-        tolerance = 1e-3 # m
+        tolerance = 1e-3  # m
         for idx, is_in_coll_region in enumerate(mask_in_coll_region):
             if is_in_coll_region:
                 s_coll = coll_regions[np.any(np.isclose(coll_regions, s[idx]), axis=1)]
                 argmin = np.argmin(np.abs(s[idx] - s_coll))
                 s_closest = s_coll[0][argmin]
-                if argmin == 0: 
+                if argmin == 0:
                     s[idx] = s_closest - tolerance
                 elif argmin == 1:
                     s[idx] = s_closest + tolerance
 
         BeamGasManager.df_interactions_log['s'] = s
         
-        elements_to_insert = [(s_elem, [(key, dict_bg_elems[key])]) for s_elem, key in zip(s, dict_bg_elems.keys())]
+        elements_to_insert = [(s_elem, [(key, dict_bg_markers[key])]) for s_elem, key in zip(s, dict_bg_markers.keys())]
 
         line._insert_thin_elements_at_s(elements_to_insert)
+
+    def install_beam_gas_elements(self, line):
+        if line.tracker is not None:
+            line.discard_tracker()
+
+        self.circumference = line.get_length()
+        ds_list = [self.density_df.s.iloc[0] + self.circumference - self.density_df.s.iloc[-1]] + list(np.diff(self.density_df.s))
+        dict_bg_elems = {}
+
+        for index, values in self.density_df.iterrows():
+            local_gas_params = {}
+
+            # Add eBrem parameters if eBrem is initialized
+            if self.eBrem is not None:
+                local_gas_params.update({
+                    f'{key}_eBrem': {'n': values[key], 'xsec': self.eBrem[key].compute_xsec()}
+                    for key in self.density_df.columns[1:]
+                })
+
+            # Add CoulombScat parameters if CoulombScat is initialized
+            if self.CoulombScat is not None:
+                local_gas_params.update({
+                    f'{key}_CoulombScat': {'n': values[key], 'xsec': self.CoulombScat[key].compute_xsec()}
+                    for key in self.density_df.columns[1:]
+                })
+
+            # Bias the cross-section parameters
+            local_gas_params = self.cross_section_biasing(local_gas_params)
+            dict_bg_elems[f'beam_gas_{index}'] = BeamGasElement(ds_list[index], local_gas_params, self)
+        
+        self.bg_element_names = list(dict_bg_elems.keys())
+        BeamGasManager.df_interactions_log['name'] = self.bg_element_names.copy()
+        
+        newLine = xt.Line(elements=[], element_names=[])
+        for ee, nn in zip(line.elements, line.element_names):
+            if nn.startswith('BGMarker_'):
+                ii_bg = nn.split('_')[1]
+                nn_bg = 'beam_gas_' + ii_bg
+                newLine.append_element(dict_bg_elems[nn_bg], nn_bg)
+            else:
+                newLine.append_element(ee, nn)
+
+        # Update the line in place
+        line.element_names = newLine.element_names
+        line.element_dict.update(newLine.element_dict)
+
+    # def install_beam_gas_elements(self, line):
+    #     self.circumference = line.get_length()
+    #     ds_list = [self.density_df.s.iloc[0] + self.circumference - self.density_df.s.iloc[-1]] + list(np.diff(self.density_df.s))
+    #     dict_bg_elems = {}
+    #     s = []
+
+    #     for index, values in self.density_df.iterrows():
+    #         local_gas_params = {}
+
+    #         # Add eBrem parameters if eBrem is initialized
+    #         if self.eBrem is not None:
+    #             local_gas_params.update({
+    #                 f'{key}_eBrem': {'n': values[key], 'xsec': self.eBrem[key].compute_xsec()}
+    #                 for key in self.density_df.columns[1:]
+    #             })
+
+    #         # Add CoulombScat parameters if CoulombScat is initialized
+    #         if self.CoulombScat is not None:
+    #             local_gas_params.update({
+    #                 f'{key}_CoulombScat': {'n': values[key], 'xsec': self.CoulombScat[key].compute_xsec()}
+    #                 for key in self.density_df.columns[1:]
+    #             })
+
+    #         # Bias the cross-section parameters
+    #         local_gas_params = self.cross_section_biasing(local_gas_params)
+    #         dict_bg_elems[f'beam_gas_{index}'] = BeamGasElement(ds_list[index], local_gas_params, self)
+    #         s.append(values.s)
+        
+    #     self.bg_element_names = list(dict_bg_elems.keys())
+    #     BeamGasManager.df_interactions_log['name'] = self.bg_element_names.copy()
+
+    #     coll_idx = []
+    #     for idx, elem in enumerate(line.elements):
+    #         if isinstance(elem, xc.Geant4Collimator):
+    #             coll_idx.append(idx)
+    #     coll_idx = np.array(coll_idx)
+
+    #     s_ele_us = np.array(line.get_s_elements(mode='upstream'))
+    #     s_ele_ds = np.array(line.get_s_elements(mode='downstream'))
+    #     s_coll_us = np.take(s_ele_us, coll_idx)
+    #     s_coll_ds = np.take(s_ele_ds, coll_idx)
+
+    #     coll_regions = np.column_stack((s_coll_us, s_coll_ds))
+
+    #     # Initialize a mask with False values
+    #     mask_in_coll_region = np.zeros_like(s, dtype=bool)
+
+    #     # Iterate over each collimator region and update the mask
+    #     for us, ds in coll_regions:
+    #         # Check if elements in s_array fall between the upstream and downstream of any collimator
+    #         mask_in_coll_region |= (s >= us) & (s <= ds)
+
+    #     tolerance = 1e-3 # m
+    #     for idx, is_in_coll_region in enumerate(mask_in_coll_region):
+    #         if is_in_coll_region:
+    #             s_coll = coll_regions[np.any(np.isclose(coll_regions, s[idx]), axis=1)]
+    #             argmin = np.argmin(np.abs(s[idx] - s_coll))
+    #             s_closest = s_coll[0][argmin]
+    #             if argmin == 0: 
+    #                 s[idx] = s_closest - tolerance
+    #             elif argmin == 1:
+    #                 s[idx] = s_closest + tolerance
+
+    #     BeamGasManager.df_interactions_log['s'] = s
+        
+    #     elements_to_insert = [(s_elem, [(key, dict_bg_elems[key])]) for s_elem, key in zip(s, dict_bg_elems.keys())]
+
+    #     line._insert_thin_elements_at_s(elements_to_insert)
 
 
     def update_interaction_dist(self, mfp_step):

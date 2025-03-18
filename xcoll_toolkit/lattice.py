@@ -685,6 +685,10 @@ def load_and_process_line(config_dict):
                                   theta_lim=(beamgas_opt['theta_min'], beamgas_opt['theta_max']) # Coulomb scattering angle limits
                                   )
         print('Done initialising beam-gas manager.')
+        # Install beam-gas markers
+        print('Installing beam-gas markers...')
+        bgman.install_beam_gas_markers(line)
+        print('Done installing beam-gas markers.')
 
         # TODO: improve this
         if 'superkekb' in inp['machine']:
@@ -698,11 +702,6 @@ def load_and_process_line(config_dict):
         print('Installing beam-gas elements...')
         bgman.install_beam_gas_elements(line)
         print('Done installing beam-gas elements.')
-
-        # TODO: make this more general (seems to be required only when using thick lines)
-        if 'superkekb' or 'dafne' in inp['machine']:
-            insert_missing_bounding_apertures(line, inp['machine'])
-        # aper_check = line.check_aperture()
 
         # Twiss again to get the optics at the beam-gas elements
         _configure_tracker_radiation(line, radiation_mode, for_optics=True)
