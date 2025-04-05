@@ -1,0 +1,4 @@
+- collimasim-toolkit loss maps -> xcoll loss maps
+- Loss map normalization in energy ?
+- Other scales for loss maps (e.g., power, energy, power/m, energy/m, ...)
+- Add merge impacts to merge_output

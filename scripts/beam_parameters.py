@@ -1,5 +1,0 @@
-FCC_EE_BEAM_PARAMETERS = {
-    "BEAM_ENERGY": 45.6e9,
-    "NB": 11200,
-    "KB": 2.14e11
-}
