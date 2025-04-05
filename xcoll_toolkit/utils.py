@@ -12,7 +12,7 @@ Date:   12-03-2025
 # ===========================================
 import yaml
 import pandas as pd
-import xpart as xp
+import xtrack as xt
 
 from collections import namedtuple
 
@@ -79,8 +79,8 @@ def load_lossmap_hdf(filename):
 ParticleInfo = namedtuple("ParticleInfo", ["name", "pdgid", "mass", "A", "Z", "charge"])
 
 def get_particle_info(particle_name):
-    pdg_id = xp.pdg.get_pdg_id_from_name(particle_name)
-    charge, A, Z, _ = xp.pdg.get_properties_from_pdg_id(pdg_id)
-    mass = xp.pdg.get_mass_from_pdg_id(pdg_id)
+    pdg_id = xt.particles.pdg.get_pdg_id_from_name(particle_name)
+    charge, A, Z, _ = xt.particles.pdg.get_properties_from_pdg_id(pdg_id)
+    mass = xt.particles.pdg.get_mass_from_pdg_id(pdg_id)
     return ParticleInfo(particle_name, pdg_id, mass, A, Z, charge)
 
