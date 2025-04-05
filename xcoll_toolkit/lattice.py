@@ -392,13 +392,17 @@ def install_apertures(line, machine):
         ########################################
         # Get lists of IR and arc magnets
         ########################################
-        magnet_types = {'Bend', 'ThickSliceBend', 'ThinSliceBendEntry', 'ThinSliceBendExit', 'ThickSliceQuadrupole', 'ThickSliceSextupole'}
+        magnet_types = {'Bend', 'ThickSliceBend', 'ThinSliceBendEntry', 'ThinSliceBendExit',
+                        'ThickSliceQuadrupole', 'ThinSliceQuadrupoleEntry', 'ThinSliceQuadrupoleExit',
+                        'ThickSliceSextupole', 'ThinSliceSextupoleEntry', 'ThinSliceSextupoleExit'}
         ir_magnets = set()
         arc_magnets = set()
 
         for nn, ee, s in zip(tab.name, tab.element_type, tab.s):
             # TODO: use a more elegant approach here
             if ee in magnet_types and (s >= SKEKB_IR_REGION[0] and s <= SKEKB_IR_REGION[1]):
+                if nn.startswith('qc'):
+                    continue
                 ir_magnets.add(nn)
             elif ee in magnet_types and (s < SKEKB_IR_REGION[0] or s > SKEKB_IR_REGION[1]):
                 arc_magnets.add(nn)
@@ -540,28 +544,23 @@ def install_apertures(line, machine):
         for aper_name in chicane_aper_names:
             line[aper_name].shift_x = tw_aper['x', aper_name]
 
-
         ########################################
         # Apply shifts to account for individual solenoid transforms
         ########################################
         indiv_sol_s_start = tab.rows['start_indiv_sol_entry_transforms'].s[0]
         indiv_sol_s_end = tab.rows['end_indiv_sol_exit_transforms'].s[0]
 
-        # NOTE: The x and y shifts are not the same at the entry and exit of the individual solenoid region
+        # NOTE: The x shifts are not the same at the entry and exit of the individual solenoid region
         #       so we take the average
         # TODO: check is this is accurate enough
         indiv_sol_x_shift = np.mean([tw_aper['x', 'indiv_sol_entry_zeta_shift'],
-                                    tw_aper['x', 'indiv_sol_exit_zeta_shift']])
-
-        indiv_sol_y_shift = np.mean([tw_aper['y', 'indiv_sol_entry_zeta_shift'],
-                                    tw_aper['y', 'indiv_sol_exit_zeta_shift']])
+                                     tw_aper['x', 'indiv_sol_exit_zeta_shift']])
 
         mask_indiv_sol_aper = (tab.element_type == 'LimitEllipse') & (tab.s >= indiv_sol_s_start) & (tab.s <= indiv_sol_s_end)
         indiv_sol_aper_names = tab.rows[mask_indiv_sol_aper].name
 
         for nn in indiv_sol_aper_names:
             line[nn].shift_x += indiv_sol_x_shift
-            line[nn].shift_y += indiv_sol_y_shift
 
         ########################################
         # Apply shifts to account for common solenoid transforms
@@ -569,18 +568,15 @@ def install_apertures(line, machine):
         common_sol_s_start = tab.rows['start_common_sol_entry_transforms'].s[0]
         common_sol_s_end = tab.rows['end_common_sol_exit_transforms'].s[0]
 
-        mask_common_sol_aper = (tab.element_type == 'LimitEllipse') & (tab.s >= indiv_sol_s_start) & (tab.s <= indiv_sol_s_end)
+        mask_common_sol_aper = (tab.element_type == 'LimitEllipse') & (tab.s >= common_sol_s_start) & (tab.s <= common_sol_s_end)
         common_sol_aper_names = tab.rows[mask_common_sol_aper].name
 
         for nn in common_sol_aper_names:
-            if nn.startswith('lqcrp3..0..0') or nn.startswith('lqclp3..0..1'):
+            if nn.startswith('lqcrp2..0') or nn.startswith('lqclp2..1'):
                 continue  # Skip first and last detected elements
 
             line[nn].shift_x += tw_aper['x', nn]
             line[nn].a *= np.cos(HALF_XING_RAD_LER)
-
-            line[nn].shift_y += tw_aper['y', nn]
-            # b transfromation not needed in vertical because of absence of xing angle
 
         return line
     
