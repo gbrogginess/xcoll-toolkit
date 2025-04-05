@@ -159,14 +159,50 @@ class CoulombScatteringCalculator:
         return accepted_theta[:n]
 
 
-    def sample_deflections(self, n):
+    def sample_deflections(self, particles, n):
         phi = np.random.uniform(0, 2*np.pi, n)
         theta = self._sample_theta(n)
 
-        dpx = np.sin(theta) * np.cos(phi)
-        dpy = np.sin(theta) * np.sin(phi)
+        sintheta = np.sin(theta)
+        costheta = np.cos(theta)
 
-        return dpx, dpy
+        sinphi = np.sin(phi)
+        cosphi = np.cos(phi)
+
+        pz = np.sqrt((1 + particles.delta)**2 - particles.px**2 - particles.py**2)
+        PP = np.column_stack((particles.px, particles.py, pz))
+        norms = np.linalg.norm(PP, axis=1, keepdims=True) # This is equivalent to 1 + particles.delta
+        PP_HAT = PP / norms
+
+        UU_HAT = np.zeros_like(PP_HAT)
+
+        tol = 1e-12
+        mask = (PP_HAT[:, 0]**2 + PP_HAT[:, 1]**2) < tol**2
+
+        # General case
+        UU_HAT[~mask] = np.stack([
+            -PP_HAT[~mask, 1],
+            PP_HAT[~mask, 0],
+            np.zeros_like(PP_HAT[~mask, 0])
+        ], axis=1)
+
+        # If momentum can be considered purely longitudinal
+        UU_HAT[mask] = np.tile(np.array([1.0, 0.0, 0.0]), (mask.sum(), 1))
+
+        # Normalize U_HAT 
+        UU_HAT /= np.linalg.norm(UU_HAT, axis=1, keepdims=True)
+
+        VV_HAT = np.cross(PP_HAT, UU_HAT)
+
+        scattered_dir = (
+            sintheta[:, None] * cosphi[:, None] * UU_HAT +
+            sintheta[:, None] * sinphi[:, None] * VV_HAT +
+            costheta[:, None] * PP_HAT
+        )
+
+        PP_OUT = scattered_dir * norms
+
+        return PP_OUT[:, 0], PP_OUT[:, 1]
 
 
     def compute_xsec(self):
@@ -259,15 +295,60 @@ class BremsstrahlungCalculator:
         return np.array(costheta)
     
 
-    def sample_deflections(self, n):
+    def _rotate_to_direction(vectors, directions):
+        # Rodrigues rotation
+        z = np.array([0, 0, 1])
+        rotated = []
+        for vec, target in zip(vectors, directions):
+            v = np.cross(z, target)
+            s = np.linalg.norm(v)
+            c = np.dot(z, target)
+            if s == 0:
+                rotated.append(vec * c)
+            else:
+                vx = np.array([[0, -v[2], v[1]],
+                            [v[2], 0, -v[0]],
+                            [-v[1], v[0], 0]])
+                rot = np.eye(3) + vx + vx @ vx * ((1 - c) / (s**2))
+                rotated.append(rot @ vec)
+
+        return np.array(rotated)
+    
+
+    def sample_deflections(self, particles, n):
+        # Step 1: sample gamma energies
+        gamma_energies = self._sample_gamma_energies(n)
+
+        # Step 2: sample angles using Tsai model
         costheta = self._sample_costheta(n)
         sintheta = np.sqrt(1 - costheta**2)
         phi = np.random.uniform(0, 2*np.pi, n)
-        gammadirs = np.array([[sintheta[i] * np.cos(phi[i]), sintheta[i] * np.sin(phi[i]), costheta[i]] for i in range(len(sintheta))])
-        dpx = -gammadirs[:, 0]
-        dpy = -gammadirs[:, 1]
 
-        return dpx, dpy
+        # Step 3: build gamma directions (in local z frame)
+        gammadirs_local = np.column_stack((
+            sintheta * np.cos(phi),
+            sintheta * np.sin(phi),
+            costheta
+        ))
+
+        # Step 4: rotate gamma directions into particle frame
+        # Get current momentum directions from particles
+        pz = np.sqrt((1 + particles.delta)**2 - particles.px**2 - particles.py**2)
+        PP = np.column_stack((particles.px, particles.py, pz))
+        norms = np.linalg.norm(PP, axis=1, keepdims=True) # This is equivalent to 1 + particles.delta
+        PP_HAT = PP / norms
+
+        gammadirs_rotated = self._rotate_to_direction(gammadirs_local, PP_HAT)
+
+        # Step 5: compute gamma momenta
+        PP_GAMMAS = gamma_energies[:, None] * gammadirs_rotated
+
+        # Step 6: compute final momentum (conservation)
+        PP_OUT = (PP * self.p0c - PP_GAMMAS) / self.p0c
+
+        delta = np.linalg.norm(PP_OUT, axis=1, keepdims=True) - 1
+
+        return PP_OUT[:, 0], PP_OUT[:, 1], delta
 
     
     def _compute_screening_functions(self, gamma, epsilon):
@@ -579,12 +660,7 @@ class BeamGasManager():
         return interacting_part_mask
 
 
-    def draw_angles_and_delta(self, processes, n):
-        # Initialize dpx, dpy and delta array
-        dpx = np.zeros(n)
-        dpy = np.zeros(n)
-        delta = np.zeros(n)
-
+    def draw_angles_and_delta(self, particles, processes, n):
         unique_processes = np.unique(processes)
         if len(unique_processes) == 1:
             # Only one interaction process on a single gas species
@@ -593,12 +669,12 @@ class BeamGasManager():
 
             if process == 'eBrem':
                 # Only eBrem interactions on a single gas species
-                dpx, dpy = self.eBrem[gas].sample_deflections(n)
-                delta = self.eBrem[gas].sample_deltas(n)
+                px, py, delta = self.eBrem[gas].sample_deflections(particles, n)
 
             elif process == 'CoulombScat':
                 # Only CoulombScat interactions on a single gas species
-                dpx, dpy = self.CoulombScat[gas].sample_deflections(n)
+                px, py = self.CoulombScat[gas].sample_deflections(particles, n)
+                delta = particles.delta
 
         # TODO: implement the possibility to have all interactions at once
         # for ii, process in enumerate(processes):
@@ -611,7 +687,7 @@ class BeamGasManager():
         #     elif process == 'CoulombScat':
         #         dpx[ii], dpy[ii] = self.CoulombScat[atomic_species].sample_deflections(n)
 
-        return dpx, dpy, delta
+        return px, py, delta
 
 
 class BeamGasElement(xt.BeamElement):
@@ -632,6 +708,10 @@ class BeamGasElement(xt.BeamElement):
         # Which particles are interacting
         interacting_mask = self.manager.update_interaction_dist(self.mfp_step)
         n_interactions = sum(interacting_mask)
+
+        if n_interactions == 0:
+            return
+
         # self.update_n_interactions(n_interactions)
 
         # Get the type of interactions and apply the effect
@@ -640,7 +720,10 @@ class BeamGasElement(xt.BeamElement):
         idx_bg_elem = self.manager.df_interactions_log['interaction'].isna().idxmax()
         self.manager.df_interactions_log.at[idx_bg_elem, 'interaction'] = interactions.tolist()
 
-        dpx, dpy, delta = self.manager.draw_angles_and_delta(interactions, n_interactions)
-        particles.px[interacting_mask] += dpx
-        particles.py[interacting_mask] += dpy
-        particles.delta[interacting_mask] += delta
+        px, py, delta = self.manager.draw_angles_and_delta(particles.filter(interacting_mask),
+                                                            interactions,
+                                                            n_interactions)
+        
+        particles.px[interacting_mask] = px
+        particles.py[interacting_mask] = py
+        particles.delta[interacting_mask] = delta
