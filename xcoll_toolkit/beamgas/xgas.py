@@ -14,6 +14,7 @@ import xtrack as xt
 import xcoll as xc
 import periodictable as pt
 
+from collections import Counter
 from scipy.constants import physical_constants
 
 # ===========================================
@@ -202,7 +203,7 @@ class CoulombScatteringCalculator:
 
         PP_OUT = scattered_dir * norms
 
-        return PP_OUT[:, 0], PP_OUT[:, 1]
+        return PP_OUT[:, 0].tolist(), PP_OUT[:, 1].tolist()
 
 
     def compute_xsec(self):
@@ -294,7 +295,7 @@ class BremsstrahlungCalculator:
         
         return np.array(costheta)
     
-
+    @staticmethod
     def _rotate_to_direction(vectors, directions):
         # Rodrigues rotation
         z = np.array([0, 0, 1])
@@ -346,9 +347,9 @@ class BremsstrahlungCalculator:
         # Step 6: compute final momentum (conservation)
         PP_OUT = (PP * self.p0c - PP_GAMMAS) / self.p0c
 
-        delta = np.linalg.norm(PP_OUT, axis=1, keepdims=True) - 1
+        delta = np.linalg.norm(PP_OUT, axis=1) - 1
 
-        return PP_OUT[:, 0], PP_OUT[:, 1], delta
+        return PP_OUT[:, 0].tolist(), PP_OUT[:, 1].tolist(), delta.tolist()
 
     
     def _compute_screening_functions(self, gamma, epsilon):
@@ -402,6 +403,9 @@ class BeamGasManager():
     def __init__(self, density_df, q0, p0c, eBrem, CoulombScat, eBrem_energy_cut=10e3, theta_lim=(1e-7, 50e-3), interaction_length_is_n_turns=1):
         self.rng = np.random.default_rng()
 
+        if eBrem and CoulombScat:
+            raise ValueError("Only one of eBrem or CoulombScat can be True at a time.")
+
         self.q0 = q0
         self.p0c = p0c
         self.density_df = density_df
@@ -412,21 +416,20 @@ class BeamGasManager():
             for element in density_df.columns[1:]
         }
 
+        self.eBrem = None
+        self.CoulombScat = None
+
         if eBrem:
             self.eBrem = {
                 key: BremsstrahlungCalculator(self.atomic_species[key], p0c, energy_cut=eBrem_energy_cut)
                 for key in self.atomic_species
             }
-        else:
-            self.eBrem = None
         
         if CoulombScat:
             self.CoulombScat = {
                 key: CoulombScatteringCalculator(self.atomic_species[key], q0, p0c, theta_lim=theta_lim)
                 for key in self.atomic_species
             }
-        else:
-            self.CoulombScat = None
 
         self.bg_element_names = None
         self.particles = None
@@ -661,34 +664,47 @@ class BeamGasManager():
 
 
     def draw_angles_and_delta(self, particles, processes, n):
-        unique_processes = np.unique(processes)
-        if len(unique_processes) == 1:
-            # Only one interaction process on a single gas species
-            gas = unique_processes[0].split('_')[0]
-            process = unique_processes[0].split('_')[1]
+        gases = [p.split('_')[0] for p in processes]
+        gas_counter = Counter(gases)
 
-            if process == 'eBrem':
-                # Only eBrem interactions on a single gas species
-                px, py, delta = self.eBrem[gas].sample_deflections(particles, n)
+        px, py, delta = [], [], []
+        if self.eBrem is not None:
+            npp = 0
+            # Bremsstrahlung
+            for gas, ngas in gas_counter.items():   
+                mask = np.zeros(n, dtype=bool)
+                mask[npp:npp+ngas] = True
+                pp = particles.filter(mask)
+                _px, _py, _delta = self.eBrem[gas].sample_deflections(pp, ngas)
 
-            elif process == 'CoulombScat':
-                # Only CoulombScat interactions on a single gas species
-                px, py = self.CoulombScat[gas].sample_deflections(particles, n)
-                delta = particles.delta
+                px.append(_px)
+                py.append(_py)
+                delta.append(_delta)
 
-        # TODO: implement the possibility to have all interactions at once
-        # for ii, process in enumerate(processes):
-        #     atomic_species = process.split('_')[0]
-        #     process = process.split('_')[1]
+                npp += ngas
 
-        #     if process == 'eBrem':
-        #         dpx[ii], dpy[ii] = self.eBrem[atomic_species].sample_deflections(n)
-        #         delta[ii] = self.eBrem[atomic_species].sample_deltas(n)
-        #     elif process == 'CoulombScat':
-        #         dpx[ii], dpy[ii] = self.CoulombScat[atomic_species].sample_deflections(n)
+        elif self.CoulombScat is not None:
+            npp = 0
+            # Coulomb Scattering
+            for gas, ngas in gas_counter.items():   
+                mask = np.zeros(n, dtype=bool)
+                mask[npp:npp+ngas] = True
+                pp = particles.filter(mask)
+                _px, _py = self.CoulombScat[gas].sample_deflections(pp, ngas)
+                _delta = pp.delta
+
+                px.append(_px)
+                py.append(_py)
+                delta.append(_delta)
+
+                npp += ngas
+
+        px = np.concatenate(px)
+        py = np.concatenate(py)
+        delta = np.concatenate(delta)
 
         return px, py, delta
-
+    
 
 class BeamGasElement(xt.BeamElement):
     def __init__(self, ds, local_gas_parameters, manager, **kwargs):
