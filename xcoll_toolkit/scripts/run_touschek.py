@@ -72,12 +72,12 @@ def run(config_file_path, config_dict):
 
     # # Start interaction record
     # impacts = xc.InteractionRecord.start(line=line)
-    # # Start the Geant4 engine
-    # xc.Geant4Engine.start(line=line,
-    #                       seed=config_dict['run']['seed'],
-    #                       bdsim_config_file=config_dict['input']['bdsim_config'])
-    # # Enable scattering
-    # line.scattering.enable()
+    # Start the Geant4 engine
+    xc.Geant4Engine.start(line=line,
+                          seed=config_dict['run']['seed'],
+                          bdsim_config_file=config_dict['input']['bdsim_config'])
+    # Enable scattering
+    line.scattering.enable()
     
     # Track particles
     print(f'\nTrack particles scattered at {start_elem}. \n')
@@ -90,10 +90,10 @@ def run(config_file_path, config_dict):
             print(f'All particles lost by turn {turn}, teminating.')
             break
 
-    # # Disable scattering
-    # line.scattering.disable()
-    # # Stop the Geant4 engine
-    # xc.Geant4Engine.stop()
+    # Disable scattering
+    line.scattering.disable()
+    # Stop the Geant4 engine
+    xc.Geant4Engine.stop()
     # # Stop interaction record
     # impacts.stop()
 
