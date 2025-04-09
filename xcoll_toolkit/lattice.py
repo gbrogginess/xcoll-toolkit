@@ -751,8 +751,12 @@ def load_and_process_line(config_dict):
 
         touschek_manager.initialise_touschek(element=element)
 
-        # TODO: make this more general (seems to be required only when using thick lines)
-        if 'superkekb' or 'dafne' in inp['machine']:
+        # TODO: improve this
+        if 'superkekb' in inp['machine']:
+            # Install apertures
+            print('Installing apertures...')
+            line = install_apertures(line, inp['machine'])
+        elif 'dafne' in inp['machine']:
             insert_missing_bounding_apertures(line, inp['machine'])
 
         return line, touschek_manager, element
