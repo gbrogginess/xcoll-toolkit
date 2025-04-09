@@ -176,8 +176,11 @@ class TouschekCalculator():
         gamma_cm  = QQ[:, 3] / ELECTRON_MASS_EV
         self.gamma_cm = [gamma_cm, gamma_cm]
 
-        # Sample theta and phi in the cm frame
-        self.theta_cm = np.random.uniform(0, np.pi, self.npart_over_two)
+        # Sample theta and phi in the center-of-mass (cm) frame
+        # Avoid sampling exactly 0 or π to prevent singularities 
+        # in functions like the Møller cross section (which can diverge at θ = 0 or π).
+        # The chosen range for θ maintains physical accuracy while improving numerical stability.
+        self.theta_cm = (np.random.uniform(0, 1, self.npart_over_two) * 0.9999 + 0.00005) * np.pi
         phi_cm = np.random.uniform(0, np.pi, self.npart_over_two)
 
         # Apply the scattering angle
