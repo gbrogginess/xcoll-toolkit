@@ -682,7 +682,7 @@ class TouschekManager:
             rr = np.cumsum(total_scattering_rate[ii_sorted])
 
             # Determine the threshold for tracking particles
-            threshold = (1 - 0.99) * rr[-1]
+            threshold = (1 - 0.95) * rr[-1]
 
             n_part_to_track = np.sum(rr >= threshold)
 
