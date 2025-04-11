@@ -124,7 +124,7 @@ def load_colldb(colldb, emit_dict):
 # ===========================================
 # 🔹 Insert user-defined elements
 # ===========================================
-def _insert_user_element(line, elem_def, CUSTOM_ELEMENTS):
+def _insert_user_element(line, elem_def):
     elements = {**vars(xt.beam_elements.elements), **CUSTOM_ELEMENTS}
     # try a conversion to float, as because of the arbitraty yaml
     # inputs, no type enforcement can be made at input validation time

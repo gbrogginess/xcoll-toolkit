@@ -80,6 +80,7 @@ TOUSCHEK_INPUT_SCHEMA = Schema({
 COLLIMATION_BEAM_SCHEMA = Schema({'particle': str,
                       'momentum': Use(to_float),
                       'emittance': Or(Use(to_float), {'x': Use(to_float), 'y': Use(to_float)}),
+                      Optional('sigma_z'): Use(to_float), # TODO: fix this
                       })
 XSUITE_DIST_SCHEMA = Schema({'file': os.path.exists,
                              Optional('keep_ref_particle', default=False): Use(bool),
@@ -96,8 +97,7 @@ HALO_MDIR_SCHM = Schema({'type': And(str, lambda s: s in ('halo_direct_momentum'
                         'side': And(str, lambda s: s in ('+', '-', '+-')),
                         'sigma_z': Use(to_float)
                         })
-MATCHED_SCHM = Schema({'type': And(str, lambda s: s in ('matched_beam',)),
-                        'sigma_z': Use(to_float)
+MATCHED_SCHM = Schema({'type': And(str, lambda s: s in ('matched_beam',))
                         })
 
 BEAMGAS_BEAM_SCHEMA = Schema({'particle': str,
@@ -117,6 +117,7 @@ TOUSCHEK_BEAM_SCHEMA = Schema({'particle': str,
 DIST_SCHEMA = Schema({'source': And(str, lambda s: s in ('internal', 'xsuite')),
              Optional('start_element', default=None): Or(str.lower, None),
              Optional('initial_store_file', default=None): Or(str.lower, None),
+             Optional('weight', default=None): Or(Use(to_float), None),
         'parameters': Or(XSUITE_DIST_SCHEMA,
                          MATCHED_SCHM,
                          HALO_DIR_SCHM,
@@ -137,6 +138,7 @@ RUN_SCHEMA = Schema({'energy_cut': Use(to_float),
                      Optional('aperture_interp', default=None): Or(Use(to_float), None),
                      Optional('outputfile', default='part.hdf'): str,
                      Optional('batch_mode', default=True): Use(bool),
+                     Optional('record_emittance', default=False): Use(bool),
                      })
 
 DYNC_ELE_SCHEMA = Schema({Optional('element_name'): str,

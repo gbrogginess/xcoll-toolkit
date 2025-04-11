@@ -12,7 +12,7 @@ Version: 0.1.0.dev1
 __version__ = "0.1.0.dev1"
 
 from .config import config, COLLIMATION_CONF_SCHEMA, BEAMGAS_CONF_SCHEMA, TOUSCHEK_CONF_SCHEMA
-from .utils import load_config, _save_particles_hdf, save_impacts, save_beamgas_log
+from .utils import load_config, _save_particles_hdf, save_impacts, save_beamgas_log, _emittance_tracking
 from .lattice import load_and_process_line, _configure_tracker_radiation, deactivate_bg_elems
 from .beam import prepare_particles
 from .dynamic_element_change import setup_dynamic_element_change, _apply_dynamic_element_change
@@ -29,6 +29,7 @@ __all__ = [
     "_save_particles_hdf",
     "save_impacts",
     "save_beamgas_log",
+    "_emittance_tracking",
     "load_and_process_line",
     "_configure_tracker_radiation",
     "deactivate_bg_elems",

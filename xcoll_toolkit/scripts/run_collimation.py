@@ -36,6 +36,8 @@ def run(config_file_path, config_dict):
     nturns = config_dict['run']['turns']
     output_file = Path(config_dict['run'].get('outputfile', 'part.hdf'))
     aper_interp = config_dict['run']['aperture_interp']
+    weight = config_dict['dist']['weight']
+    record_emittance = config_dict['run']['record_emittance']
     
     # ===========================================
     # 🔹 Load and process line
@@ -46,6 +48,8 @@ def run(config_file_path, config_dict):
     # 🔹 Prepare particle distribution
     # ===========================================
     particles = prepare_particles(config_dict, line, twiss, ref_part)
+    if weight is not None:
+        particles.weight = np.ones(particles._capacity) * weight
 
     # ===========================================
     # 🔹 Look for changes to element parameters to apply every turn
@@ -82,12 +86,21 @@ def run(config_file_path, config_dict):
                           bdsim_config_file=config_dict['input']['bdsim_config'])
     # Enable scattering
     line.scattering.enable()
+
+    if record_emittance:
+        gemitt_record = {'gemitt_x': [], 'gemitt_y': []}
     
     # Track particles
     for turn in range(nturns):
         print(f'\nStart turn {turn}, Survivng particles: {particles._num_active_particles}')
+
         if tbt_change_list is not None:
             _apply_dynamic_element_change(line, tbt_change_list, turn)
+
+        if record_emittance:
+            emit = _emittance_tracking(particles)
+            gemitt_record['gemitt_x'].append(emit['gemitt_x'])
+            gemitt_record['gemitt_y'].append(emit['gemitt_y'])
 
         line.track(particles, ele_start=start_elem, ele_stop=start_elem, num_turns=1)
 
@@ -150,6 +163,15 @@ def run(config_file_path, config_dict):
     # 🔹 Save particles and loss map
     # ===========================================
     _save_particles_hdf(output_file, particles, lossmap_data)
+
+    # ===========================================
+    # 🔹 Save emittance record
+    # ===========================================
+    if record_emittance:
+        import json
+        fpath = output_dir / 'emittance_record.json'
+        with open(fpath, 'w') as f:
+            json.dump(gemitt_record, f, indent=4)
 
 # ===========================================================================
 # 🔹 Entry point

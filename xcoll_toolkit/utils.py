@@ -11,6 +11,7 @@ Date:   12-03-2025
 # 🔹 Required modules
 # ===========================================
 import yaml
+import numpy as np
 import pandas as pd
 import xtrack as xt
 
@@ -84,3 +85,32 @@ def get_particle_info(particle_name):
     mass = xt.particles.pdg.get_mass_from_pdg_id(pdg_id)
     return ParticleInfo(particle_name, pdg_id, mass, A, Z, charge)
 
+# ===========================================
+# 🔹 Emittance tracking
+# ===========================================
+def _rms_emit(xsq, pxsq, xpxsq, no_particles):
+    return np.sqrt((xsq/no_particles)*(pxsq/no_particles) - (xpxsq/no_particles)**2)
+
+def _compute_second_order_moments(particles):
+    xsq = np.sum(particles.x**2)
+    pxsq = np.sum(particles.px**2)
+    xpxsq = np.sum(particles.x*particles.px)
+
+    ysq = np.sum(particles.y**2)
+    pysq = np.sum(particles.py**2)
+    ypysq = np.sum(particles.y*particles.py)
+
+    no_particles = len(particles.x)
+
+    return {
+        'gemitt_x': _rms_emit(xsq, pxsq, xpxsq, no_particles),
+        'gemitt_y': _rms_emit(ysq, pysq, ypysq, no_particles)
+    }
+
+def _emittance_tracking(particles):
+    mask_alive = particles.state > 0
+    pp = particles.filter(mask_alive)
+
+    emit_dict = _compute_second_order_moments(pp)
+
+    return emit_dict
