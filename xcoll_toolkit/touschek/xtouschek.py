@@ -178,8 +178,8 @@ class TouschekCalculator():
 
         # Sample theta and phi in the center-of-mass (cm) frame
         # Avoid sampling exactly 0 or π to prevent singularities 
-        # in functions like the Møller cross section (which can diverge at θ = 0 or π).
-        # The chosen range for θ maintains physical accuracy while improving numerical stability.
+        # in the Møller differential cross section (which diverges at θ = 0 or π)
+        # The chosen range for θ (from ELEGANT) should maintain physical accuracy while improving numerical stability
         self.theta_cm = (np.random.uniform(0, 1, self.npart_over_two) * 0.9999 + 0.00005) * np.pi
         phi_cm = np.random.uniform(0, np.pi, self.npart_over_two)
 
@@ -217,7 +217,6 @@ class TouschekCalculator():
         # TODO: Check in detail that V/N with N being the number of scattering events is correct
         local_scattering_rate1 = phase_space_volume / npart_over_two * v_cm * self.gamma[0]**-2 * self.moller_dcs[0] * np.sin(self.theta_cm) * dens1 * dens2
         local_scattering_rate2 = phase_space_volume / npart_over_two * v_cm * self.gamma[1]**-2 * self.moller_dcs[1] * np.sin(self.theta_cm) * dens1 * dens2
-
 
         return local_scattering_rate1, local_scattering_rate2
 
@@ -670,6 +669,7 @@ class TouschekManager:
             print(f'Computing scattering rates at element {self.touschek.element}...')
             total_scattering_rate, mc_rate, piwinski_rate = self.touschek.compute_total_scattering_rate(phase_space_volume,
                                                                                                         dens1, dens2)
+            
             print('\n')
 
             # Filter out the particles that have delta less than delta_min
@@ -689,8 +689,17 @@ class TouschekManager:
             ii_part_to_track = np.sort(ii_sorted[-n_part_to_track:])
 
             # Filter the particles
-            PP = PP[ii_part_to_track, :]
-            total_scattering_rate = total_scattering_rate[ii_part_to_track]
+            # TODO: need to make this more general
+            if n_part_to_track >= 20000:
+                PP = PP[ii_part_to_track, :]
+                total_scattering_rate = total_scattering_rate[ii_part_to_track]
+            else:
+                print(f'\nWARNING: Only {n_part_to_track} particles account for 95% of total scattering rate '
+                f'at {self.touschek.element}.\n'
+                'Falling back to selecting the top 20000 particles by weight.\n')
+                n_part_to_track = 20000
+                PP = PP[ii_sorted[-20000:], :]
+                total_scattering_rate = total_scattering_rate[ii_sorted[-20000:]]
 
             # Prepare particle object
             # NOTE: Touschek scattering rates assigned as particle weights.
@@ -716,5 +725,4 @@ class TouschekManager:
 
         self.line.discard_tracker()
 
-
-
+        return
