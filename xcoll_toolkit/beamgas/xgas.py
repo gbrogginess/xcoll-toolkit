@@ -495,13 +495,27 @@ class BeamGasManager():
         tolerance = 1e-3  # m
         for idx, is_in_coll_region in enumerate(mask_in_coll_region):
             if is_in_coll_region:
-                s_coll = coll_regions[np.any(np.isclose(coll_regions, s[idx]), axis=1)]
-                argmin = np.argmin(np.abs(s[idx] - s_coll))
-                s_closest = s_coll[0][argmin]
-                if argmin == 0:
-                    s[idx] = s_closest - tolerance
-                elif argmin == 1:
-                    s[idx] = s_closest + tolerance
+                # Find the collimator region in which s[idx] is located
+                in_region_idx = np.where((coll_regions[:, 0] <= s[idx]) & (s[idx] <= coll_regions[:, 1]))[0]
+
+                if len(in_region_idx) == 0:
+                    print(f"[WARNING] s[{idx}] = {s[idx]:.6f} flagged as in a collimator region but no matching region found")
+                    continue
+
+                us, ds = coll_regions[in_region_idx[0]]
+
+                # Distances to the upstream and downstream edges
+                dist_us = abs(s[idx] - us)
+                dist_ds = abs(s[idx] - ds)
+
+                # Shift marker just outside the closest boundary
+                if dist_us < dist_ds:
+                    s_new = us - tolerance
+                else:
+                    s_new = ds + tolerance
+
+                print(f"[INFO] Moving BGMarker_{idx}: {s[idx]:.6f} → {s_new:.6f} (moved outside collimator region)")
+                s[idx] = s_new
 
         BeamGasManager.df_interactions_log['s'] = s
         
