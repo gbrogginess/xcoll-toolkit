@@ -83,6 +83,7 @@ def run(config_file_path, config_dict):
     # Start the Geant4 engine
     xc.Geant4Engine.start(line=line,
                           seed=config_dict['run']['seed'],
+                          relative_energy_cut=config_dict['run']['energy_cut'],
                           bdsim_config_file=config_dict['input']['bdsim_config'])
     # Enable scattering
     line.scattering.enable()
