@@ -596,6 +596,8 @@ def load_and_process_line(config_dict):
     p0 = beam['momentum']
     mass = particle_info.mass
     q0 = particle_info.charge
+    if particle_name == '192Os':
+        p0 = p0 * q0
     ref_part = xt.Particles(p0c=p0, mass0=mass, q0=q0, pdg_id=particle_info.pdgid)
 
     comp_eloss = run.get('compensate_sr_energy_loss', False)
