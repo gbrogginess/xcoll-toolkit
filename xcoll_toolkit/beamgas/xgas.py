@@ -550,7 +550,7 @@ class BeamGasManager():
 
             # Bias the cross-section parameters
             local_gas_params = self.cross_section_biasing(local_gas_params)
-            dict_bg_elems[f'beam_gas_{index}'] = BeamGasElement(ds_list[index], local_gas_params, self)
+            dict_bg_elems[f'beam_gas_{index}'] = BeamGasElement(ds_list[index], local_gas_params, f'beam_gas_{index}', self)
         
         self.bg_element_names = list(dict_bg_elems.keys())
         BeamGasManager.df_interactions_log['name'] = self.bg_element_names.copy()
@@ -659,8 +659,8 @@ class BeamGasManager():
         interacting_part_ids = self.particles.particle_id[interacting_part_mask]
         BeamGasManager.log_interacted_part_ids.extend(interacting_part_ids)
 
-        idx_bg_elem = BeamGasManager.df_interactions_log['particle_id'].isna().idxmax()
-        BeamGasManager.df_interactions_log.at[idx_bg_elem, 'particle_id'] = interacting_part_ids.tolist()
+        # idx_bg_elem = BeamGasManager.df_interactions_log['particle_id'].isna().idxmax()
+        # BeamGasManager.df_interactions_log.at[idx_bg_elem, 'particle_id'] = interacting_part_ids.tolist()
 
         noninteracting_part_mask = ~interacting_part_mask & (self.particles.state >0) & (self.particles.parent_particle_id == self.particles.particle_id)
         noninteracting_part_ids = self.particles.particle_id[noninteracting_part_mask]
@@ -721,9 +721,10 @@ class BeamGasManager():
     
 
 class BeamGasElement(xt.BeamElement):
-    def __init__(self, ds, local_gas_parameters, manager, **kwargs):
+    def __init__(self, ds, local_gas_parameters, name, manager, **kwargs):
         self.iscollective = True
         self.isthick = False
+        self.name = name
         self.ds = ds
         self.interactions = list(local_gas_parameters.keys())
         self.mfp = [1 / (gg['n'] * gg['xsec']) if gg['n'] > 0 else 1 / ( 1 * gg['xsec']) for gg in local_gas_parameters.values()]
@@ -747,8 +748,26 @@ class BeamGasElement(xt.BeamElement):
         # Get the type of interactions and apply the effect
         interactions = self.manager.rng.choice(self.interactions, p=self.int_prob, size=n_interactions)
 
-        idx_bg_elem = self.manager.df_interactions_log['interaction'].isna().idxmax()
-        self.manager.df_interactions_log.at[idx_bg_elem, 'interaction'] = interactions.tolist()
+        interacting_ids = self.manager.particles.particle_id[interacting_mask].tolist()
+        interactions_list = interactions.tolist()
+
+        idx_log = self.manager.df_interactions_log.index[
+            self.manager.df_interactions_log['particle_id'].isna() &
+            self.manager.df_interactions_log['interaction'].isna()
+        ][0]
+
+        self.manager.df_interactions_log.loc[idx_log] = {
+            'name': self.name,
+            's': self.manager.density_df.s.iloc[int(self.name.split("_")[-1])],
+            'particle_id': interacting_ids,
+            'interaction': interactions_list
+        }
+
+        if len(interacting_ids) > 0:
+            print('\n')
+            print(f'beam_gas_element: {self.name}')
+            print(f'interacting_ids: {interacting_ids}')
+            print(f'interactions: {interactions}\n')
 
         px, py, delta = self.manager.draw_angles_and_delta(particles.filter(interacting_mask),
                                                             interactions,
