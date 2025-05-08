@@ -47,15 +47,6 @@ def find_apertures(line):
             apertures.append(ee)
     return np.array(i_apertures), np.array(apertures)
 
-def find_bb_lenses(line):
-    i_apertures = []
-    apertures = []
-    for ii, ee in enumerate(line.elements):
-        if ee.__class__.__name__.startswith('BeamBeamBiGaussian3D'):
-            i_apertures.append(ii)
-            apertures.append(ee)
-    return np.array(i_apertures), np.array(apertures)
-
 # ===========================================
 # 🔹 Tracker and radiation
 # ===========================================
@@ -195,34 +186,24 @@ def _make_bb_lens(nb, phi, sigma_z, alpha, n_slices, other_beam_q0,
 def insert_bb_lens_bounding_apertures(line):
     # Place aperture defintions around all beam-beam elements in order to ensure
     # the correct functioning of the aperture loss interpolation
-    # the aperture definitions are taken from the nearest neighbour aperture in the line
-    s_pos = line.get_s_elements(mode='upstream')
-    apert_idx, apertures = find_apertures(line)
-    apert_s = np.take(s_pos, apert_idx)
+    tab = line.get_table()
+    bblens_names = tab.rows[tab.element_type == 'BeamBeamBiGaussian3D'].name
+    idx_bblenses = np.where(np.isin(tab.name, bblens_names))[0]
 
-    bblens_idx, bblenses = find_bb_lenses(line)
-    bblens_names = np.take(line.element_names, bblens_idx)
-    bblens_s_start = np.take(s_pos, bblens_idx)
-    bblens_s_end = np.take(s_pos, bblens_idx + 1)
-
-    # Find the nearest neighbour aperture in the line
-    bblens_apert_idx_start = np.searchsorted(apert_s, bblens_s_start, side='left')
-    bblens_apert_idx_end = bblens_apert_idx_start + 1
-
-    aper_start = apertures[bblens_apert_idx_start]
-    aper_end = apertures[bblens_apert_idx_end]
+    ip_aper = xt.LimitEllipse(a=0.01, b=0.01)
 
     idx_offset = 0
-    for ii in range(len(bblenses)):
-        line.insert_element(name=bblens_names[ii] + '_aper_start',
-                            element=aper_start[ii].copy(),
-                            at=bblens_idx[ii] + idx_offset)
+    for ii, nn in zip(idx_bblenses, bblens_names):
+        line.insert_element(nn + '_aper_start',
+                            element=ip_aper.copy(),
+                            at=ii + idx_offset)
         idx_offset += 1
 
-        line.insert_element(name=bblens_names[ii] + '_aper_end',
-                            element=aper_end[ii].copy(),
-                            at=bblens_idx[ii] + 1 + idx_offset)
+        line.insert_element(nn + '_aper_end',
+                            element=ip_aper.copy(),
+                            at=ii + 1 + idx_offset)
         idx_offset += 1
+
             
 def _insert_beambeam_elements(line, config_dict, twiss_table, emit):
     beamstrahlung_mode = config_dict['run'].get('beamstrahlung', 'off')
