@@ -136,7 +136,8 @@ def generate_xpart_particles(config_dict, line, twiss, ref_particle, capacity):
                                                      twiss=twiss,
                                                      longitudinal=longitudinal_mode,
                                                      longitudinal_betatron_cut=None,
-                                                     _capacity=capacity)
+                                                     _capacity=capacity,
+                                                     **config.XTRACK_TWISS_KWARGS)
     elif dist_type == 'matched_beam':
         particles = _prepare_matched_beam(config_dict, line, twiss, ref_particle, 
                                           element, ex, ey, num_particles, capacity)
