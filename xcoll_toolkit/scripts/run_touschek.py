@@ -154,7 +154,7 @@ def run(config_file_path, config_dict):
         binwidth = config_dict['lossmap']['aperture_binwidth']
         weights = config_dict['lossmap'].get('weights', 'none')
         lossmap_data = prepare_lossmap(
-            particles, line, s0, binwidth=binwidth, weights=weights)
+            particles, line, binwidth=binwidth, weights=weights)
     else:
         lossmap_data = None
 

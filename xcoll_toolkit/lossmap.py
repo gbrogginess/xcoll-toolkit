@@ -12,7 +12,7 @@ import xcoll as xc
 from warnings import warn
 
 
-def prepare_lossmap(particles, line, s0, binwidth, weights):
+def prepare_lossmap(particles, line, binwidth, weights):
     lossmap_weights = ['none', 'energy']
     if weights not in lossmap_weights:
         raise ValueError('weights must be in [{}]'.format(', '.join(lossmap_weights)))
