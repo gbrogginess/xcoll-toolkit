@@ -329,38 +329,70 @@ class TouschekCalculator():
     def _assign_piwinski_total_scattering_rates(self):
         line = self.manager.line
         T_rev0 = self.twiss.T_rev0
-
         tab = line.get_table()
 
+        # Indices of Touschek markers in the line
         ii_tmarker = []
         for ii, nn in enumerate(line.element_names):
             if nn.startswith('TMarker_'):
                 ii_tmarker.append(ii)
 
         ii_current_tmarker = 0
-        s_before = 0
-        integrated_rate = 0
+        integrated_rate = 0.0  # ∫ r(s) ds over the current interval (between two TMarkers)
+
+        # Tail pre-pass (wrap-around): integrate from last TMarker to end of line
+        # This ensures the first stored value corresponds to the interval (last -> first).
+        last_tm_idx = ii_tmarker[-1]
+        last_tm_name = line.element_names[last_tm_idx]
+        s_last_tm = tab.rows[tab.name == last_tm_name].s[0]
+
+        # Left endpoint at the last TMarker itself
+        rate_before = self._compute_piwinski_total_scattering_rate(last_tm_name)
+        s_before = s_last_tm
+
+        # Walk elements *after* the last TMarker up to the end of the line
+        for jj in range(last_tm_idx + 1, len(line.elements)):
+            nn_tail = line.element_names[jj]
+            s = tab.rows[tab.name == nn_tail].s[0]
+            if s > s_before:
+                ds = s - s_before
+                rate = self._compute_piwinski_total_scattering_rate(nn_tail)
+                integrated_rate += 0.5 * (rate_before + rate) * ds
+                s_before = s
+                rate_before = rate
+
+        # Main pass from s=0 up to each TMarker
+        s_before = 0.0
+
         for (ii, ee), nn in zip(enumerate(line.elements), line.element_names):
             s = tab.rows[tab.name == nn].s[0]
+
             if ii < ii_tmarker[ii_current_tmarker]:
                 if s > s_before:
                     ds = s - s_before
-                    s_before = s
                     rate = self._compute_piwinski_total_scattering_rate(nn)
-                    integrated_rate += rate * ds
+                    integrated_rate += 0.5 * (rate_before + rate) * ds
+                    s_before = s
+                    rate_before = rate
+
             elif ii == ii_tmarker[ii_current_tmarker]:
                 if s > s_before:
                     ds = s - s_before
-                    s_before = s
                     rate = self._compute_piwinski_total_scattering_rate(nn)
-                    integrated_rate += rate * ds
-                    self.integrated_piwinski_total_scattering_rates[f'TMarker_{ii_current_tmarker}'] = integrated_rate / C_LIGHT_VACUUM / T_rev0
-                    # Reset the integrated rate for the next Touschek marker
-                    integrated_rate = 0
-                    ii_current_tmarker += 1
-                    
-                    if ii_current_tmarker >= len(ii_tmarker):
-                        break
+                    integrated_rate += 0.5 * (rate_before + rate) * ds
+                    s_before = s
+                    rate_before = rate
+
+                # Store ∫ r(s) ds between the previous TMarker and this one
+                self.integrated_piwinski_total_scattering_rates[f'TMarker_{ii_current_tmarker}'] = (
+                    integrated_rate / C_LIGHT_VACUUM / T_rev0
+                )
+
+                # Reset accumulator for the next interval
+                integrated_rate = 0.0
+                ii_current_tmarker += 1
+                if ii_current_tmarker >= len(ii_tmarker):
+                    break
 
 
     def compute_total_scattering_rate(self, phase_space_volume, dens1, dens2):
