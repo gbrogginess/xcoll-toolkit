@@ -468,49 +468,6 @@ class TouschekManager:
         print('Done.\n')
 
 
-    def _compute_local_momentum_aperture(self, delta_min=-0.02, delta_max=0.02, delta_step=0.001, n_turns=100):
-        line = self.line
-        ref_particle = self.ref_particle
-        nemitt_x = self.nemitt_x
-        nemitt_y = self.nemitt_y
-
-        tab = line.get_table()
-        elements = tab.rows['TMarker.*'].name
-        s_tmarkers = tab.rows['TMarker.*'].s
-
-        delta = np.arange(delta_min, delta_max, delta_step)
-
-        delta_min = []
-        for ee in elements:
-            print(f'Computing local momentum aperture at {ee} with tracking...')
-            particles = line.build_particles(
-                particle_ref=ref_particle,
-                x_norm=np.zeros(len(delta)), px_norm=np.zeros(len(delta)),
-                y_norm=np.zeros(len(delta)), py_norm=np.zeros(len(delta)),
-                nemitt_x=nemitt_x, nemitt_y=nemitt_y,
-                at_element=ee
-            )
-
-            particles.delta += delta
-            initial_deltas = particles.delta.copy()
-            particles.start_tracking_at_element = -1
-
-            line.track(particles, ele_start=ee, ele_stop=ee, num_turns=n_turns)
-
-            surviving_pids = particles.filter(particles.state == 1).particle_id
-
-            delta_min.append(
-                min(abs(min(initial_deltas[surviving_pids])),
-                    abs(max(initial_deltas[surviving_pids])))
-                    )
-            
-        delta_min = np.array(delta_min)
-
-        delta_min_interp = np.interp(tab.s, s_tmarkers, delta_min)
-
-        return dict(zip(tab.name, delta_min_interp))
-
-
     def _generate_coord_and_compute_density(self, twiss, element):
         n_part_over_two = int(self.n_part_mc / 2)
         beta0 = self.ref_particle.beta0[0]
@@ -636,17 +593,9 @@ class TouschekManager:
         # Pass the twiss table to the TouschekCalculator
         self.touschek.twiss = twiss
 
-        if self.local_momaper is None:
-            # If not provided as input, estimate local momentum aperture and pass it to the TouschekCalculator
-            print('\nPrecomputed local momentum aperture not provided.')
-            print('Computing local momentum aperture...')
-            local_momentum_aperture = self._compute_local_momentum_aperture()
-            self.touschek.local_momentum_aperture = local_momentum_aperture
-        else:
-            # If provided as input, pass it to the TouschekCalculator
-            print('\nPrecomputed local momentum aperture provided.')
-            self.touschek.local_momentum_aperture = self.local_momaper
-
+        # Pass the local momentum aperture to the TouschekCalculator
+        self.touschek.local_momentum_aperture = self.local_momaper
+            
         # Assign the Piwikinski total scattering rate to each element with a length 
         # and to each Touschek marker
         print('\nComputing Piwinski total scattering rates...')
