@@ -290,7 +290,8 @@ class TouschekCalculator():
         dpy = self.twiss['dpy', element]
         dyt = alfy * dy + bety * dpy # dyt: dy tilde
 
-        delta_min = local_momentum_aperture[element] * fdelta
+        deltaN = local_momentum_aperture[element][0] * fdelta
+        deltaP = local_momentum_aperture[element][1] * fdelta
 
         sigmab_x = np.sqrt(gemitt_x * betx) # Horizontal betatron beam size
         sigma_x = np.sqrt(gemitt_x * betx + dx**2 * sigma_delta**2) # Horizontal beam size
@@ -304,15 +305,19 @@ class TouschekCalculator():
         gamma = np.sqrt(1 + p**2 / ELECTRON_MASS_EV**2)
         beta = np.sqrt(1 - gamma**-2)
 
-        tm = beta**2 * delta_min**2
-
         b1 = betx**2 / (2 * beta**2 * gamma**2 * sigmab_x**2) * (1 - sigma_h**2 * dxt**2 / sigmab_x**2) \
              + bety**2 / (2 * beta**2 * gamma**2 * sigmab_y**2) * (1 - sigma_h**2 * dyt**2 / sigmab_y**2)
         
         b2 = np.sqrt(b1**2 - betx**2 * bety**2 * sigma_h**2 / (beta**4 * gamma**4 * sigmab_x**4 * sigmab_y**4 * sigma_delta**2) \
                              * (sigma_x**2 * sigma_y**2 - sigma_delta**4 * dx**2 * dy**2))
 
-        piwinski_integral = self._compute_piwinski_integral(tm, b1, b2)
+        tmN = beta**2 * (abs(deltaN))**2 
+        tmP = beta**2 * (deltaP)**2
+
+        piwinski_integralN = self._compute_piwinski_integral(tmN, b1, b2)
+        piwinski_integralP = self._compute_piwinski_integral(tmP, b1, b2)
+
+        piwinski_integral = piwinski_integralN + piwinski_integralP
 
         rate = CLASSICAL_ELECTRON_RADIUS**2 * C_LIGHT_VACUUM * betx * bety * sigma_h * kb**2 \
                         / (8*np.sqrt(np.pi) * beta**2 * gamma**4 * sigmab_x**2 * sigmab_y**2 * sigma_z * sigma_delta) \
@@ -360,9 +365,10 @@ class TouschekCalculator():
 
     def compute_total_scattering_rate(self, phase_space_volume, dens1, dens2):
         fdelta = self.manager.fdelta
-        delta_min = self.local_momentum_aperture[self.element] * fdelta
-        mask_PP1 = abs(self.PP1[:,5]) > delta_min
-        mask_PP2 = abs(self.PP2[:,5]) > delta_min
+        deltaN = self.local_momentum_aperture[self.element][0] * fdelta
+        deltaP = self.local_momentum_aperture[self.element][1] * fdelta
+        mask_PP1 = (self.PP1[:, 5] > deltaP) | (self.PP1[:, 5] < deltaN)
+        mask_PP2 = (self.PP2[:, 5] > deltaP) | (self.PP2[:, 5] < deltaN)
         self.mask_PP1 = mask_PP1
         self.mask_PP2 = mask_PP2
 
