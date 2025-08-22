@@ -665,28 +665,31 @@ class TouschekManager:
 
             PP = np.vstack((PP1, PP2))
 
-            ii_sorted = np.argsort(total_scattering_rate)
-            rr = np.cumsum(total_scattering_rate[ii_sorted])
+            # Target coverage of total scattering rate (elegant default = 0.99)
+            keep_portion = getattr(self, "keep_portion", 0.99)
+            # Safety floor to avoid tiny samples when a few weights dominate
+            min_keep = getattr(self, "min_keep", 20000)
 
-            # Determine the threshold for tracking particles
-            threshold = (1 - 0.95) * rr[-1]
+            # Sort by descending weight
+            idx_desc = np.argsort(total_scattering_rate)[::-1]
+            w_sorted = total_scattering_rate[idx_desc]
+            cum = np.cumsum(w_sorted)
+            total_w = cum[-1]
 
-            n_part_to_track = np.sum(rr >= threshold)
+            # Minimal n that reaches the desired coverage
+            cutoff = keep_portion * total_w
+            n_keep = np.searchsorted(cum, cutoff, side="left") + 1
+            # Enforce minimum sample size
+            n_keep = max(n_keep, min_keep)
 
-            ii_part_to_track = np.sort(ii_sorted[-n_part_to_track:])
+            keep_idx = np.sort(idx_desc[:n_keep])
 
-            # Filter the particles
-            # TODO: need to make this more general
-            if n_part_to_track >= 20000:
-                PP = PP[ii_part_to_track, :]
-                total_scattering_rate = total_scattering_rate[ii_part_to_track]
-            else:
-                print(f'\nWARNING: Only {n_part_to_track} particles account for 95% of total scattering rate '
-                f'at {self.touschek.element}.\n'
-                'Falling back to selecting the top 20000 particles by weight.\n')
-                n_part_to_track = 20000
-                PP = PP[ii_sorted[-20000:], :]
-                total_scattering_rate = total_scattering_rate[ii_sorted[-20000:]]
+            # Apply selection
+            PP = PP[keep_idx,:]
+            total_scattering_rate = total_scattering_rate[keep_idx]
+
+            # This is the number of particles we will track
+            n_part_to_track = n_keep
 
             # Prepare particle object
             # NOTE: Touschek scattering rates assigned as particle weights.
