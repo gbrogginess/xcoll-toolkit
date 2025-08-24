@@ -37,9 +37,9 @@ class TouschekCalculator():
         self.mask_PP2 = None
         self.element = None
         self.twiss = None
-        self.gamma = []
         self.theta_cm = None
-        self.gamma_cm = []
+        self.gamma_cm = None
+        self.beta0 = None
         self.mask_particles = None
         self.integrated_piwinski_total_scattering_rates = {}
 
@@ -145,78 +145,75 @@ class TouschekCalculator():
         return VV1, VV2 
     
 
-    def _compute_moller_dcs(self, theta_cm):
-        def _moller_dcs(gamma_cm, beta_cm, theta_cm):
-            return CLASSICAL_ELECTRON_RADIUS**2 / (4 * gamma_cm**2) * ((1 + beta_cm**-2)**2 * (4 - 3*np.sin(theta_cm)**2) / (np.sin(theta_cm)**4) + 4/(np.sin(theta_cm)**2) + 1)
+    def _compute_moller_shape(self, theta_cm):
+        st2   = np.sin(theta_cm)**2
+        b2    = self.beta0**2
 
-        gamma_cm = self.gamma_cm[0]
-        beta_cm = np.sqrt(1 - gamma_cm**-2)
-        moller_dcs = _moller_dcs(gamma_cm, beta_cm, theta_cm)
-        
-        return [moller_dcs, moller_dcs]
+        return (1.0 - b2) * ( ((1.0 + 1.0/b2)**2) * (4.0/st2**2 - 3.0/st2) + 1.0 + 4.0/st2 )
 
 
     def scatter(self, PP1, PP2):
         p0c = self.p0c
 
+        # Compute 4-momenta for the scattering particles
         VV1 = self._get_fourmomenta_matrix(PP1)
         VV2 = self._get_fourmomenta_matrix(PP2)
 
+        # Boost to the cm frame
         VV = VV1 + VV2
-
         BB = self._get_boost_matrix(VV)
-
         b2 = np.sum(BB**2, axis=1)
 
-        gamma = np.sqrt(1 - b2)**-1
-        self.gamma = [gamma, gamma]
+        # Compute gamma of the cm frame w.r.t. the lab frame
+        gamma_cm = 1.0 / np.sqrt(1.0 - b2)
+        self.gamma_cm = gamma_cm
 
+        # Transform to the cm frame
         QQ = self._lab_to_cm(VV1, BB)
 
-        gamma_cm  = QQ[:, 3] / ELECTRON_MASS_EV
-        self.gamma_cm = [gamma_cm, gamma_cm]
-
-        # Sample theta and phi in the center-of-mass (cm) frame
+        # Sample theta and phi in the cm frame
         # Avoid sampling exactly 0 or π to prevent singularities 
         # in the Møller differential cross section (which diverges at θ = 0 or π)
         # The chosen range for θ (from ELEGANT) should maintain physical accuracy while improving numerical stability
         self.theta_cm = (np.random.uniform(0, 1, self.npart_over_two) * 0.9999 + 0.00005) * np.pi
-        phi_cm = np.random.uniform(0, np.pi, self.npart_over_two)
+        phi_cm        = np.random.uniform(0, np.pi, self.npart_over_two)
 
         # Apply the scattering angle
         QQ = self._rotate(QQ, self.theta_cm, phi_cm)
 
-        # Boost back to the lab frame
-        VV1, VV2 = self._cm_to_lab(QQ, BB)
-        p1 = np.sqrt(np.sum(VV1[:, 0:3]**2, axis=1))
-        p2 = np.sqrt(np.sum(VV2[:, 0:3]**2, axis=1))
+        # beta0 = |q'| / E* (after scattering)
+        qabs   = np.linalg.norm(QQ[:, :3], axis=1)
+        E_star = QQ[:, 3]
+        beta0  = qabs / E_star
+        self.beta0 = beta0
+        # Compute Møller DCS
+        self.moller_dcs = CLASSICAL_ELECTRON_RADIUS**2 / 4 * self._compute_moller_shape(self.theta_cm)
 
-        # Compute Moller DCS
-        self.moller_dcs = self._compute_moller_dcs(self.theta_cm)
+        # Transform back to the lab frame
+        VV1, VV2 = self._cm_to_lab(QQ, BB)
 
         PP1[:, 1] = VV1[:, 0] / p0c
         PP1[:, 3] = VV1[:, 1] / p0c
-        PP1[:, 5] = (np.sqrt(VV1[:,0]**2 + VV1[:,1]**2 + VV1[:,2]**2) - p0c) / p0c
+        PP1[:, 5] = (np.sqrt(VV1[:, 0]**2 + VV1[:, 1]**2 + VV1[:, 2]**2) - p0c) / p0c
 
         PP2[:, 1] = VV2[:, 0] / p0c
         PP2[:, 3] = VV2[:, 1] / p0c
-        PP2[:, 5] = (np.sqrt(VV2[:,0]**2 + VV2[:,1]**2 + VV2[:,2]**2) - p0c) / p0c
+        PP2[:, 5] = (np.sqrt(VV2[:, 0]**2 + VV2[:, 1]**2 + VV2[:, 2]**2) - p0c) / p0c
 
         self.PP1 = PP1
         self.PP2 = PP2
-
         return PP1, PP2
 
 
     def _compute_local_scattering_rate(self, phase_space_volume, dens1, dens2):
-        npart_over_two = self.manager.n_part_mc / 2
+        n_events = self.manager.n_part_mc // 2
+        v0_star  = self.beta0 * C_LIGHT_VACUUM # Relative velocity in the cm frame after scattering
+        inv_gcm2 = self.gamma_cm**-2 
+        w        = phase_space_volume / n_events
+        s        = np.sin(self.theta_cm)
 
-        beta_cm = np.sqrt(1 - self.gamma_cm[0]**-2)
-        v_cm = beta_cm * C_LIGHT_VACUUM
-
-        # TODO: Check in detail that V/N with N being the number of scattering events is correct
-        local_scattering_rate1 = phase_space_volume / npart_over_two * v_cm * self.gamma[0]**-2 * self.moller_dcs[0] * np.sin(self.theta_cm) * dens1 * dens2
-        local_scattering_rate2 = phase_space_volume / npart_over_two * v_cm * self.gamma[1]**-2 * self.moller_dcs[1] * np.sin(self.theta_cm) * dens1 * dens2
+        local_scattering_rate1 = w * v0_star * inv_gcm2 * self.moller_dcs * s * dens1 * dens2
+        local_scattering_rate2 = w * v0_star * inv_gcm2 * self.moller_dcs * s * dens1 * dens2
 
         return local_scattering_rate1, local_scattering_rate2
 
@@ -261,9 +258,7 @@ class TouschekCalculator():
             epsrel=1e-12
         )
 
-        piwinski_integral = val * 2
-
-        return piwinski_integral
+        return val
 
 
     def _compute_piwinski_total_scattering_rate(self, element):
@@ -667,8 +662,8 @@ class TouschekManager:
 
             # Target coverage of total scattering rate (elegant default = 0.99)
             keep_portion = getattr(self, "keep_portion", 0.99)
-            # Safety floor to avoid tiny samples when a few weights dominate
-            min_keep = getattr(self, "min_keep", 20000)
+            # # Safety floor to avoid tiny samples when a few weights dominate
+            # min_keep = getattr(self, "min_keep", 20000)
 
             # Sort by descending weight
             idx_desc = np.argsort(total_scattering_rate)[::-1]
@@ -680,7 +675,7 @@ class TouschekManager:
             cutoff = keep_portion * total_w
             n_keep = np.searchsorted(cum, cutoff, side="left") + 1
             # Enforce minimum sample size
-            n_keep = max(n_keep, min_keep)
+            # n_keep = max(n_keep, min_keep)
 
             keep_idx = np.sort(idx_desc[:n_keep])
 
