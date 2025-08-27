@@ -635,7 +635,7 @@ class TouschekManager:
             ii_touschek_element = int(re.search(r'\d+', element).group())
             self.s = [self.s[ii_touschek_element]]
 
-        for ii in range(len(self.s)):
+        for ii, ss in enumerate(self.s):
             # Pass the name of the Touschek marker to the TouschekCalculator
             self.touschek.element = f'TMarker_{ii if element is None else ii_touschek_element}'
 
@@ -697,6 +697,7 @@ class TouschekManager:
                 x=PP[:,0], px=PP[:,1],
                 y=PP[:,2], py=PP[:,3],
                 zeta=PP[:,4], delta=PP[:,5],
+                s=np.ones(n_part_to_track) * ss,
                 weight=total_scattering_rate,
                 _capacity=2*n_part_to_track
             )
