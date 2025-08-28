@@ -232,19 +232,17 @@ class TouschekCalculator():
             t = np.tan(k) ** 2
             tm = np.tan(km) ** 2
             fact = (
-                (2 * t + 1) ** 2 * (t / tm / (1 + t) - 1) / t
-                + t
-                - np.sqrt(t * tm * (1 + t))
-                - (2 + 1 / (2 * t)) * np.log(t / tm / (1 + t))
+                (2*t + 1)**2 * (t/tm / (1+t) - 1) / t + t - np.sqrt(t*tm * (1 + t))
+                - (2 + 1 / (2*t)) * np.log(t/tm / (1+t))
             )
             if B2 * t < 500:
-                intp = fact * np.exp(-B1 * t) * i0(B2 * t) * np.sqrt(1 + t)
+                intp = fact * np.exp(-B1*t) * i0(B2*t) * np.sqrt(1+t)
             else:
                 intp = (
                     fact
-                    * np.exp(B2 * t - B1 * t)
-                    / np.sqrt(2 * np.pi * B2 * t)
-                    * np.sqrt(1 + t)
+                    * np.exp(B2*t - B1*t)
+                    / np.sqrt(2*np.pi * B2*t)
+                    * np.sqrt(1+t)
                 )
             return intp
 
@@ -262,6 +260,7 @@ class TouschekCalculator():
 
 
     def _compute_piwinski_total_scattering_rate(self, element):
+        # Benchmarkerd with ELEGANT
         # TODO: if element is thick, use the average optical functions
         p0c = self.manager.ref_particle.p0c[0]
         beta0 = self.manager.ref_particle.beta0[0]
@@ -306,17 +305,21 @@ class TouschekCalculator():
         b2 = np.sqrt(b1**2 - betx**2 * bety**2 * sigma_h**2 / (beta**4 * gamma**4 * sigmab_x**4 * sigmab_y**4 * sigma_delta**2) \
                              * (sigma_x**2 * sigma_y**2 - sigma_delta**4 * dx**2 * dy**2))
 
-        tmN = beta**2 * (abs(deltaN))**2 
-        tmP = beta**2 * (deltaP)**2
+        tmN = beta**2 * deltaN**2 
+        tmP = beta**2 * deltaP**2
 
         piwinski_integralN = self._compute_piwinski_integral(tmN, b1, b2)
         piwinski_integralP = self._compute_piwinski_integral(tmP, b1, b2)
 
-        piwinski_integral = piwinski_integralN + piwinski_integralP
+        rateN = CLASSICAL_ELECTRON_RADIUS**2 * C_LIGHT_VACUUM * kb**2 \
+                / (8*np.pi * gamma**2 * sigma_z * np.sqrt(sigma_x**2 * sigma_y**2 - sigma_delta**4 * dx**2 * dy**2)) \
+                * 2 * np.sqrt(np.pi * (b1**2 - b2**2)) * piwinski_integralN
 
-        rate = CLASSICAL_ELECTRON_RADIUS**2 * C_LIGHT_VACUUM * betx * bety * sigma_h * kb**2 \
-                        / (8*np.sqrt(np.pi) * beta**2 * gamma**4 * sigmab_x**2 * sigmab_y**2 * sigma_z * sigma_delta) \
-                        * piwinski_integral
+        rateP = CLASSICAL_ELECTRON_RADIUS**2 * C_LIGHT_VACUUM * kb**2 \
+                / (8*np.pi * gamma**2 * sigma_z * np.sqrt(sigma_x**2 * sigma_y**2 - sigma_delta**4 * dx**2 * dy**2)) \
+                * 2 * np.sqrt(np.pi * (b1**2 - b2**2)) * piwinski_integralP
+        
+        rate = (rateN + rateP) / 2
 
         return rate
 
@@ -406,7 +409,6 @@ class TouschekCalculator():
         total_scattering_rate_mc = np.sum(local_scattering_rate1[mask_PP1]) \
                                    + np.sum(local_scattering_rate2[mask_PP2])
 
-        # This is OK (benchmarked with APS-ERL)
         piwinski_total_scattering_rate = self._compute_piwinski_total_scattering_rate(self.element)
 
         # mc_to_piwinski_ratio = total_scattering_rate_mc / piwinski_total_scattering_rate
@@ -701,8 +703,6 @@ class TouschekManager:
                 weight=total_scattering_rate,
                 _capacity=2*n_part_to_track
             )
-
-            particles.start_tracking_at_element = -1
 
             self.touschek_dict[self.touschek.element] = {'particles': particles,
                                                          'mc_rate': mc_rate,
