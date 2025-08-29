@@ -426,7 +426,7 @@ class TouschekCalculator():
 
 
 class TouschekManager:
-    def __init__(self, line, local_momaper, n_elems, nemitt_x, nemitt_y, sigma_z, sigma_delta, kb, n_part_mc, fdelta=0.85, nx=3, ny=3, nz=3):
+    def __init__(self, line, local_momaper, nemitt_x, nemitt_y, sigma_z, sigma_delta, kb, n_part_mc, n_elems=None, fdelta=0.85, nx=3, ny=3, nz=3):
         self.line = line
         self.local_momaper = local_momaper
         self.ref_particle = line.particle_ref
@@ -445,6 +445,12 @@ class TouschekManager:
         self.touschek_dict = {}
         self.touschek = TouschekCalculator(self)
 
+        if n_elems is None:
+            # Check that the line contains at least one TMarker
+            tab = line.get_table()
+            tmarker_names = tab.rows['TMarker_.*'].name
+            if len(tmarker_names) == 0:
+                raise ValueError('If the line does not contain any TMarker, please specify n_elems.')
 
     def _get_s_elements_to_insert(self):
         ds = self.line.get_length() / self.n_elems
@@ -613,8 +619,12 @@ class TouschekManager:
 
 
     def initialise_touschek(self, element=None):
-        self.s = self._get_s_elements_to_insert()
-        self._install_touschek_markers(self.s)
+        if self.n_elems is not None:
+            self.s = self._get_s_elements_to_insert()
+            self._install_touschek_markers(self.s)
+        else:
+            tab = self.line.get_table()
+            self.s = tab.rows['TMarker_.*'].s
 
         self.line.build_tracker()
         twiss = self.line.twiss()
