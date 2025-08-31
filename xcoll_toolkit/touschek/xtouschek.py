@@ -323,75 +323,47 @@ class TouschekCalculator():
 
         return rate
 
-
     def _assign_piwinski_total_scattering_rates(self):
         line = self.manager.line
-        T_rev0 = self.twiss.T_rev0
         tab = line.get_table()
+        T_rev0 = float(self.twiss.T_rev0)
 
-        # Indices of Touschek markers in the line
-        ii_tmarker = []
+        # Lista TMarker in ordine di linea
+        ii_tm = [i for i, nm in enumerate(line.element_names) if nm.startswith('TMarker_')]
+        if not ii_tm:
+            raise RuntimeError("No TMarker found in the line.")
+
+        integrated = 0.0  # ∫ r(s) ds accumulato dall'ultimo TM visto
+        # s e rate al PRIMO punto utile per partire col trapezio
+        s0 = float(tab.rows[tab.name == line.element_names[0]].s[0])
+        r0 = self._compute_piwinski_total_scattering_rate(line.element_names[0])
+
+        s_before = s0
+        rate_before = r0
+
+        ii_current_tm = 0
+
+        # Scorri tutta la linea in ordine
         for ii, nn in enumerate(line.element_names):
-            if nn.startswith('TMarker_'):
-                ii_tmarker.append(ii)
-
-        ii_current_tmarker = 0
-        integrated_rate = 0.0  # ∫ r(s) ds over the current interval (between two TMarkers)
-
-        # Tail pre-pass (wrap-around): integrate from last TMarker to end of line
-        # This ensures the first stored value corresponds to the interval (last -> first).
-        last_tm_idx = ii_tmarker[-1]
-        last_tm_name = line.element_names[last_tm_idx]
-        s_last_tm = tab.rows[tab.name == last_tm_name].s[0]
-
-        # Left endpoint at the last TMarker itself
-        rate_before = self._compute_piwinski_total_scattering_rate(last_tm_name)
-        s_before = s_last_tm
-
-        # Walk elements *after* the last TMarker up to the end of the line
-        for jj in range(last_tm_idx + 1, len(line.elements)):
-            nn_tail = line.element_names[jj]
-            s = tab.rows[tab.name == nn_tail].s[0]
-            if s > s_before:
-                ds = s - s_before
-                rate = self._compute_piwinski_total_scattering_rate(nn_tail)
-                integrated_rate += 0.5 * (rate_before + rate) * ds
+            s = float(tab.rows[tab.name == nn].s[0])
+            ds = s - s_before
+            if ds > 0.0:
+                rate = self._compute_piwinski_total_scattering_rate(nn)
+                integrated += 0.5 * (rate_before + rate) * ds
                 s_before = s
                 rate_before = rate
 
-        # Main pass from s=0 up to each TMarker
-        s_before = 0.0
+            # Se questo elemento è il prossimo TMarker atteso, CHIUDI l'intervallo
+            if ii_current_tm < len(ii_tm) and ii == ii_tm[ii_current_tm]:
+                # ∫ r(s) ds  → rate/s per bunch (come elegant: /c e /T_rev0)
+                self.integrated_piwinski_total_scattering_rates[
+                    f'TMarker_{ii_current_tm}'
+                ] = integrated / C_LIGHT_VACUUM / T_rev0
 
-        for (ii, ee), nn in zip(enumerate(line.elements), line.element_names):
-            s = tab.rows[tab.name == nn].s[0]
-
-            if ii < ii_tmarker[ii_current_tmarker]:
-                if s > s_before:
-                    ds = s - s_before
-                    rate = self._compute_piwinski_total_scattering_rate(nn)
-                    integrated_rate += 0.5 * (rate_before + rate) * ds
-                    s_before = s
-                    rate_before = rate
-
-            elif ii == ii_tmarker[ii_current_tmarker]:
-                if s > s_before:
-                    ds = s - s_before
-                    rate = self._compute_piwinski_total_scattering_rate(nn)
-                    integrated_rate += 0.5 * (rate_before + rate) * ds
-                    s_before = s
-                    rate_before = rate
-
-                # Store ∫ r(s) ds between the previous TMarker and this one
-                self.integrated_piwinski_total_scattering_rates[f'TMarker_{ii_current_tmarker}'] = (
-                    integrated_rate / C_LIGHT_VACUUM / T_rev0
-                )
-
-                # Reset accumulator for the next interval
-                integrated_rate = 0.0
-                ii_current_tmarker += 1
-                if ii_current_tmarker >= len(ii_tmarker):
+                integrated = 0.0
+                ii_current_tm += 1
+                if ii_current_tm >= len(ii_tm):
                     break
-
 
     def compute_total_scattering_rate(self, phase_space_volume, dens1, dens2):
         fdelta = self.manager.fdelta
@@ -414,15 +386,17 @@ class TouschekCalculator():
         # mc_to_piwinski_ratio = total_scattering_rate_mc / piwinski_total_scattering_rate
         # print(f'\nMC to Piwinski ratio: {mc_to_piwinski_ratio}\n')
 
-        integrated_piwinski_total_scattering_rate = self.integrated_piwinski_total_scattering_rates[self.element]
+        # integrated_piwinski_total_scattering_rate = self.integrated_piwinski_total_scattering_rates[self.element]
 
-        # TODO: check if better to normalize over total_scattering_rate_mc or piwinski_total_scattering_rate
-        total_scattering_rate1 = local_scattering_rate1[mask_PP1] / total_scattering_rate_mc * integrated_piwinski_total_scattering_rate
-        total_scattering_rate2 = local_scattering_rate2[mask_PP2] / total_scattering_rate_mc * integrated_piwinski_total_scattering_rate
+        # # TODO: check if better to normalize over total_scattering_rate_mc or piwinski_total_scattering_rate
+        # total_scattering_rate1 = local_scattering_rate1[mask_PP1] / total_scattering_rate_mc * integrated_piwinski_total_scattering_rate
+        # total_scattering_rate2 = local_scattering_rate2[mask_PP2] / total_scattering_rate_mc * integrated_piwinski_total_scattering_rate
 
-        total_scattering_rate = np.concatenate((total_scattering_rate1, total_scattering_rate2))
+        # total_scattering_rate = np.concatenate((total_scattering_rate1, total_scattering_rate2))
 
-        return total_scattering_rate, total_scattering_rate_mc, piwinski_total_scattering_rate
+        local_scattering_rate = np.concatenate((local_scattering_rate1[mask_PP1], local_scattering_rate2[mask_PP2]))
+
+        return local_scattering_rate, total_scattering_rate_mc, piwinski_total_scattering_rate
 
 
 class TouschekManager:
@@ -617,6 +591,67 @@ class TouschekManager:
         
         return phase_space_volume
 
+    def _pick_part_indices(self, weights, weight_limit, weight_ave):
+        """
+        Traduzione fedele di pickPart da elegant (touschekScatter.c).
+        Restituisce (indici selezionati, somma dei pesi selezionati).
+        """
+        import numpy as np
+
+        indices = np.arange(len(weights))
+        weights = weights.copy()  # lavoriamo su una copia
+
+        selected = []
+        wTotal = 0.0
+
+        def recurse(start, end, weight_limit, weight_ave):
+            nonlocal wTotal, selected, indices, weights
+
+            N = end - start
+            if N < 3:
+                return
+
+            # split in heavy/light
+            w = weights[start:end]
+            idx = indices[start:end]
+            mask_heavy = w > weight_ave
+            heavy_idx = idx[mask_heavy]
+            light_idx = idx[~mask_heavy]
+            heavy_w = w[mask_heavy]
+            light_w = w[~mask_heavy]
+
+            i2 = heavy_idx.size
+            i1 = light_idx.size
+            w2 = float(heavy_w.sum())
+            w1 = float(light_w.sum())
+
+            if w2 + wTotal > weight_limit:
+                if i2 == 0:
+                    return
+                # riordina: pesanti all'inizio
+                indices[start:start+i2] = heavy_idx
+                weights[start:start+i2] = heavy_w
+                new_weight_ave = w2 / i2
+                recurse(start, start+i2, weight_limit, new_weight_ave)
+                return
+
+            # prendi tutti i pesanti
+            selected.extend(heavy_idx.tolist())
+            wTotal += w2
+
+            if i1 == 0:
+                return
+            # riordina: leggeri in coda
+            indices[start+i2:end] = light_idx
+            weights[start+i2:end] = light_w
+            new_weight_ave = w1 / i1
+            recurse(start+i2, end, weight_limit, new_weight_ave)
+
+        total_w = float(weights.sum())
+        recurse(0, len(weights), weight_limit, weight_ave)
+
+        return np.array(selected, dtype=int), wTotal
+
 
     def initialise_touschek(self, element=None):
         if self.n_elems is not None:
@@ -627,7 +662,7 @@ class TouschekManager:
             self.s = tab.rows['TMarker_.*'].s
 
         self.line.build_tracker()
-        twiss = self.line.twiss()
+        twiss = self.line.twiss4d()
 
         # Pass the twiss table to the TouschekCalculator
         self.touschek.twiss = twiss
@@ -661,9 +696,8 @@ class TouschekManager:
             phase_space_volume = self._compute_phase_space_volume(twiss, self.touschek.element)
 
             print(f'Computing scattering rates at element {self.touschek.element}...')
-            total_scattering_rate, mc_rate, piwinski_rate = self.touschek.compute_total_scattering_rate(phase_space_volume,
+            local_scattering_rate, mc_rate, piwinski_rate = self.touschek.compute_total_scattering_rate(phase_space_volume,
                                                                                                         dens1, dens2)
-            
             print('\n')
 
             # Filter out the particles that have delta less than delta_min
@@ -672,31 +706,19 @@ class TouschekManager:
 
             PP = np.vstack((PP1, PP2))
 
-            # Target coverage of total scattering rate (elegant default = 0.99)
-            keep_portion = getattr(self, "keep_portion", 0.99)
-            # # Safety floor to avoid tiny samples when a few weights dominate
-            # min_keep = getattr(self, "min_keep", 20000)
+            total_w = float(local_scattering_rate.sum())
+            weight_limit = total_w * (1 - getattr(self, "ignored_portion", 0.01))
+            weight_ave   = total_w / len(local_scattering_rate)
 
-            # Sort by descending weight
-            idx_desc = np.argsort(total_scattering_rate)[::-1]
-            w_sorted = total_scattering_rate[idx_desc]
-            cum = np.cumsum(w_sorted)
-            total_w = cum[-1]
+            keep_idx, wTotal = self._pick_part_indices(local_scattering_rate, weight_limit, weight_ave)
 
-            # Minimal n that reaches the desired coverage
-            cutoff = keep_portion * total_w
-            n_keep = np.searchsorted(cum, cutoff, side="left") + 1
-            # Enforce minimum sample size
-            # n_keep = max(n_keep, min_keep)
+            PP = PP[keep_idx, :]
+            local_scattering_rate = local_scattering_rate[keep_idx]
 
-            keep_idx = np.sort(idx_desc[:n_keep])
+            scale = self.touschek.integrated_piwinski_total_scattering_rates[self.touschek.element] / wTotal
+            total_scattering_rate = local_scattering_rate * scale
 
-            # Apply selection
-            PP = PP[keep_idx,:]
-            total_scattering_rate = total_scattering_rate[keep_idx]
-
-            # This is the number of particles we will track
-            n_part_to_track = n_keep
+            n_part_to_track = len(total_scattering_rate)
 
             # Prepare particle object
             # NOTE: Touschek scattering rates assigned as particle weights.
