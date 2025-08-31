@@ -715,7 +715,11 @@ class TouschekManager:
             PP = PP[keep_idx, :]
             local_scattering_rate = local_scattering_rate[keep_idx]
 
-            scale = self.touschek.integrated_piwinski_total_scattering_rates[self.touschek.element] / wTotal
+            # mc_rate = somma dei pesi MC di tutti gli eventi che superano δ (pre-selezione)
+            integrated_rate = self.touschek.integrated_piwinski_total_scattering_rates[self.touschek.element]
+            scale = integrated_rate / mc_rate
+
+            # assegna ai selezionati pesi che sommano all’integrato, indipendenti da ignored_portion
             total_scattering_rate = local_scattering_rate * scale
 
             n_part_to_track = len(total_scattering_rate)
