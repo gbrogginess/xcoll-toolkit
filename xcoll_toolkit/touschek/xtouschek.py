@@ -44,49 +44,47 @@ class TouschekCalculator():
         self.integrated_piwinski_total_scattering_rates = {}
 
     def _get_fourmomenta_matrix(self, PP):
-        pz = np.sqrt((1 + PP[:, 5])**2 - PP[:, 1]**2 - PP[:, 3]**2)
-        VV = self.p0c * np.column_stack((PP[:, 1], PP[:, 3], pz))
-        p_abs = np.linalg.norm(VV, axis=1)
-        e = np.sqrt(p_abs**2 + ELECTRON_MASS_EV**2)
-        VV = np.column_stack((VV, e))
+        # PP columns: [x, px, y, py, zeta, delta]
+        # Match elegant: px,py sono slope* p0c; pz = (1+delta)*p0c (no correzione con px,py)
+        px = PP[:, 1] * self.p0c
+        py = PP[:, 3] * self.p0c
+        pz = (1.0 + PP[:, 5]) * self.p0c   # come elegant
 
+        # Energia: E = sqrt(p^2 + m^2)
+        p2 = px*px + py*py + pz*pz
+        e  = np.sqrt(p2 + ELECTRON_MASS_EV**2)
+
+        VV = np.column_stack((px, py, pz, e))
         return VV
-    
+
     def _get_boost_matrix(self, VV):
         PP = VV[:, :3]
         EE = VV[:, 3].reshape(-1, 1)
         BB = PP / EE
 
         return BB
-
+    
+    
     def _lab_to_cm(self, VV, BB):
-        # Assuming BB is a matrix where each row is a bst vector [bx, by, bz]
-        # and VV is a matrix where each row corresponds to an object with columns [px, py, pz, e]
-
-        # Extracting components from BB and VV
+        # Boost singola particella (VV) nel CM definito da BB
         bx, by, bz = BB[:, 0], BB[:, 1], BB[:, 2]
         px, py, pz, e = VV[:, 0], VV[:, 1], VV[:, 2], VV[:, 3]
-        # Compute b2 for each row in BB
+
         b2 = np.sum(BB**2, axis=1)
-        # Compute gamma for each row in BB
-        gamma = 1 / np.sqrt(1 - b2)
-        # Compute bp for each row in BB and corresponding row in VV
+        # sicurezza numerica (come fa elegant implicitamente)
+        b2 = np.clip(b2, 0.0, 1.0 - 1e-16)
+        gamma = 1.0 / np.sqrt(1.0 - b2)
         bp = bx * px + by * py + bz * pz
+        # evita divisioni per 0
+        factor = np.where(b2 > 0.0, (gamma - 1.0) / b2, 0.0)
 
-        factor = (gamma - 1) / b2
-
-        # Compute qx, qy, qz for each row
         qx = px + factor * bp * bx - gamma * e * bx
         qy = py + factor * bp * by - gamma * e * by
         qz = pz + factor * bp * bz - gamma * e * bz
-        # Compute q2 for each row
-        q2 = qx**2 + qy**2 + qz**2
-        # Compute e for each row
-        e_new = np.sqrt(q2 + ELECTRON_MASS_EV**2)
+        q2 = qx*qx + qy*qy + qz*qz
+        e_star = np.sqrt(q2 + ELECTRON_MASS_EV**2)
 
-        QQ = np.column_stack((qx, qy, qz, e_new))
-
-        return QQ
+        return np.column_stack((qx, qy, qz, e_star))
     
 
     def _rotate(self, QQ, theta, phi):
@@ -111,94 +109,84 @@ class TouschekCalculator():
         QQ[:, 2] = p_abs * (c1 * x0 + s1 * z0)
 
         return QQ
-    
 
     def _cm_to_lab(self, QQ, BB):
-        # Assuming BB is a matrix where each row is a bst vector [bx, by, bz]
-        # and QQ is a matrix where each row corresponds to an object with columns [px, py, pz, e]
-
-        # Extracting components from BB and QQ
+        # Riboost dal CM al laboratorio
         bx, by, bz = BB[:, 0], BB[:, 1], BB[:, 2]
         qx, qy, qz, e = QQ[:, 0], QQ[:, 1], QQ[:, 2], QQ[:, 3]
-        # Compute b2 for each row in BB
-        b2 = np.sum(BB**2, axis=1)
-        # Compute gamma for each row in BB
-        gamma = 1 / np.sqrt(1 - b2)
-        # Compute bq for each row in BB and corresponding row in QQ
-        bq = bx * qx + by * qy + bz * qz
 
-        factor = (gamma - 1) / b2
+        b2 = np.sum(BB**2, axis=1)
+        b2 = np.clip(b2, 0.0, 1.0 - 1e-16)
+        gamma = 1.0 / np.sqrt(1.0 - b2)
+        bq = bx * qx + by * qy + bz * qz
+        factor = np.where(b2 > 0.0, (gamma - 1.0) / b2, 0.0)
 
         px1 = qx + gamma * bx * e + factor * bq * bx
         py1 = qy + gamma * by * e + factor * bq * by
         pz1 = qz + gamma * bz * e + factor * bq * bz
-        e1 = np.sqrt(px1**2 + py1**2 + pz1**2 + ELECTRON_MASS_EV**2)
+        e1  = np.sqrt(px1*px1 + py1*py1 + pz1*pz1 + ELECTRON_MASS_EV**2)
 
         px2 = -qx + gamma * bx * e - factor * bq * bx
         py2 = -qy + gamma * by * e - factor * bq * by
         pz2 = -qz + gamma * bz * e - factor * bq * bz
-        e2 = np.sqrt(px2**2 + py2**2 + pz2**2 + ELECTRON_MASS_EV**2)
+        e2  = np.sqrt(px2*px2 + py2*py2 + pz2*pz2 + ELECTRON_MASS_EV**2)
 
-        VV1 = np.column_stack((px1, py1, pz1, e1))
-        VV2 = np.column_stack((px2, py2, pz2, e2))
+        return (np.column_stack((px1, py1, pz1, e1)),
+                np.column_stack((px2, py2, pz2, e2)))
 
-        return VV1, VV2 
-    
 
     def _compute_moller_shape(self, theta_cm):
-        st2   = np.sin(theta_cm)**2
-        b2    = self.beta0**2
-
-        return (1.0 - b2) * ( ((1.0 + 1.0/b2)**2) * (4.0/st2**2 - 3.0/st2) + 1.0 + 4.0/st2 )
+        st2 = np.sin(theta_cm)**2     # theta già tenuto lontano da 0 e π
+        b2  = self.beta0**2
+        return (1.0 - b2) * ( ((1.0 + 1.0/b2)**2) * (4.0/(st2**2) - 3.0/st2) + 1.0 + 4.0/st2 )
 
 
     def scatter(self, PP1, PP2):
         p0c = self.p0c
 
-        # Compute 4-momenta for the scattering particles
-        VV1 = self._get_fourmomenta_matrix(PP1)
+        # 4-momenti delle due particelle
+        VV1 = self._get_fourmomenta_matrix(PP1)   # [px, py, pz, E]
         VV2 = self._get_fourmomenta_matrix(PP2)
 
-        # Boost to the cm frame
+        # CM boost
         VV = VV1 + VV2
-        BB = self._get_boost_matrix(VV)
+        BB = self._get_boost_matrix(VV)          # beta = (p1+p2)/(E1+E2)
         b2 = np.sum(BB**2, axis=1)
+        b2 = np.clip(b2, 0.0, 1.0 - 1e-16)
+        self.gamma_cm = 1.0 / np.sqrt(1.0 - b2)
 
-        # Compute gamma of the cm frame w.r.t. the lab frame
-        gamma_cm = 1.0 / np.sqrt(1.0 - b2)
-        self.gamma_cm = gamma_cm
-
-        # Transform to the cm frame
+        # al CM
         QQ = self._lab_to_cm(VV1, BB)
 
-        # Sample theta and phi in the cm frame
-        # Avoid sampling exactly 0 or π to prevent singularities 
-        # in the Møller differential cross section (which diverges at θ = 0 or π)
-        # The chosen range for θ (from ELEGANT) should maintain physical accuracy while improving numerical stability
+        # angoli come elegant
         self.theta_cm = (np.random.uniform(0, 1, self.npart_over_two) * 0.9999 + 0.00005) * np.pi
-        phi_cm        = np.random.uniform(0, np.pi, self.npart_over_two)
+        phi_cm        = np.random.uniform(0.0, np.pi, self.npart_over_two)
 
-        # Apply the scattering angle
+        # rotazione nel CM (solo i 3 componenti di q)
         QQ = self._rotate(QQ, self.theta_cm, phi_cm)
 
-        # beta0 = |q'| / E* (after scattering)
-        qabs   = np.linalg.norm(QQ[:, :3], axis=1)
-        E_star = QQ[:, 3]
-        beta0  = qabs / E_star
-        self.beta0 = beta0
-        # Compute Møller DCS
-        self.moller_dcs = CLASSICAL_ELECTRON_RADIUS**2 / 4 * self._compute_moller_shape(self.theta_cm)
+        # β0 = |q'|/E* (CM)  e DCS di Møller
+        qabs  = np.linalg.norm(QQ[:, :3], axis=1)
+        E_star= QQ[:, 3]
+        self.beta0 = qabs / E_star
+        self.moller_dcs = (CLASSICAL_ELECTRON_RADIUS**2) / 4.0 * self._compute_moller_shape(self.theta_cm)
 
-        # Transform back to the lab frame
+        # ritorno al laboratorio
         VV1, VV2 = self._cm_to_lab(QQ, BB)
 
+        # coordinate Xsuite: px, py normalizzati a p0, delta da pz (come elegant)
         PP1[:, 1] = VV1[:, 0] / p0c
         PP1[:, 3] = VV1[:, 1] / p0c
-        PP1[:, 5] = (np.sqrt(VV1[:, 0]**2 + VV1[:, 1]**2 + VV1[:, 2]**2) - p0c) / p0c
+        PP1[:, 5] = VV1[:, 2] / p0c - 1.0
 
         PP2[:, 1] = VV2[:, 0] / p0c
         PP2[:, 3] = VV2[:, 1] / p0c
-        PP2[:, 5] = (np.sqrt(VV2[:, 0]**2 + VV2[:, 1]**2 + VV2[:, 2]**2) - p0c) / p0c
+        PP2[:, 5] = VV2[:, 2] / p0c - 1.0
+
+        # *** come elegant: ordina in modo che delta1 <= delta2 ***
+        swap = PP1[:, 5] > PP2[:, 5]
+        if np.any(swap):
+            PP1[swap], PP2[swap] = PP2[swap].copy(), PP1[swap].copy()
 
         self.PP1 = PP1
         self.PP2 = PP2
