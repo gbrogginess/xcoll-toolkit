@@ -365,6 +365,9 @@ def install_apertures(line, machine):
         s_ip = tab.rows['ip.1'].s[0]
         df_aper_ir['s'] = s_ip + df_aper_ir['s']
 
+        s_start_ir = df_aper_ir['s'].min()
+        s_end_ir = df_aper_ir['s'].max()
+
         ########################################
         # Make a copy of the line before installing apertures
         ########################################
@@ -375,7 +378,8 @@ def install_apertures(line, machine):
         ########################################
         magnet_types = {'Bend', 'ThickSliceBend', 'ThinSliceBendEntry', 'ThinSliceBendExit',
                         'ThickSliceQuadrupole', 'ThinSliceQuadrupoleEntry', 'ThinSliceQuadrupoleExit',
-                        'ThickSliceSextupole', 'ThinSliceSextupoleEntry', 'ThinSliceSextupoleExit'}
+                        'ThickSliceSextupole', 'ThinSliceSextupoleEntry', 'ThinSliceSextupoleExit',
+                        'TouschekScattering'}
         ir_magnets = set()
         arc_magnets = set()
 
@@ -400,7 +404,7 @@ def install_apertures(line, machine):
         idx_aper = []
         aper_dict = {}
         for idx, (nn, ee) in enumerate(zip(tab.name, tab.element_type)):
-            if nn in arc_magnets or nn in ir_magnets or ee in needs_aperture:
+            if nn in arc_magnets or nn in ir_magnets or ee in needs_aperture or nn in ['qc2rp..entry_map', 'qc2rp..exit_map', 'qc1rp..entry_map', 'qc1rp..exit_map', 'qc2lp..entry_map', 'qc2lp..exit_map', 'qc1lp..entry_map', 'qc1lp..exit_map']:
                 add_bounding_apertures(nn, idx, dummy_aper, dummy_aper, aper_dict, idx_aper)
 
         insert_apertures(line, idx_aper, aper_dict)
@@ -422,7 +426,11 @@ def install_apertures(line, machine):
         arc_aper = xt.LimitEllipse(a=R_BEAMPIPE_ARC, b=R_BEAMPIPE_ARC)
 
         # Pre-compute solenoid aperture data
-        mask_sol = (tab.element_type == 'Solenoid') | (tab.element_type == 'ThickSliceSolenoid')
+        mask_sol = (tab.element_type == 'Solenoid') | (tab.element_type == 'ThickSliceSolenoid') \
+                 | (tab.name == 'qc2rp..entry_map') | (tab.name == 'qc2rp..exit_map') \
+                 | (tab.name == 'qc1rp..entry_map') | (tab.name == 'qc1rp..exit_map') \
+                 | (tab.name == 'qc1lp..entry_map') | (tab.name == 'qc1lp..exit_map') \
+                 | (tab.name == 'qc2lp..entry_map') | (tab.name == 'qc2lp..exit_map')
         sol_names = tab.rows[mask_sol].name
 
         s_sol_aper_entry = tab.rows[mask_sol].s
@@ -462,13 +470,25 @@ def install_apertures(line, machine):
                 continue
             # IR magnets
             elif nn in ir_magnets:
-                add_bounding_apertures(nn, idx, ir_aper, ir_aper, aper_dict, idx_aper)
+                s_aper = tab.rows[nn].s[0]
+                if ee == 'TouschekScattering' and (s_aper >= s_start_ir and s_aper <= s_end_ir):
+                    # This is a TouschekScattering in the Solenoid region
+                    # Need a separate treatment
+                    aper_x = np.interp(s_aper, df_aper_ir['s'], df_aper_ir['aper_x'])
+                    aper_y = np.interp(s_aper, df_aper_ir['s'], df_aper_ir['aper_y'])
+                    aper = xt.LimitEllipse(a=aper_x, b=aper_y)
+                    aper.shift_x = aper.shift_x - np.interp(s_aper, df_aper_ir['s'], df_aper_ir['aper_shift_x'])
+                    aper.shift_y = aper.shift_y - np.interp(s_aper, df_aper_ir['s'], df_aper_ir['aper_shift_y'])
+                    add_bounding_apertures(nn, idx, aper, aper, aper_dict, idx_aper)
+                    continue
+                else:
+                    add_bounding_apertures(nn, idx, ir_aper, ir_aper, aper_dict, idx_aper)
                 continue
             # Cavities, Bends
             elif ee == 'Cavity':
                 add_bounding_apertures(nn, idx, arc_aper, arc_aper, aper_dict, idx_aper)
                 continue
-            elif ee == 'Solenoid' or ee == 'ThickSliceSolenoid':
+            elif ee == 'Solenoid' or ee == 'ThickSliceSolenoid' or nn in ['qc2rp..entry_map', 'qc2rp..exit_map', 'qc1rp..entry_map', 'qc1rp..exit_map', 'qc1lp..entry_map', 'qc1lp..exit_map', 'qc2lp..entry_map', 'qc2lp..exit_map']:
                 sol_data = sol_aper_df.loc[nn]
 
                 aper_entry = xt.LimitEllipse(
