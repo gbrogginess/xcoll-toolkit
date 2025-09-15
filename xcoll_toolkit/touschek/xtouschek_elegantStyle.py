@@ -523,6 +523,7 @@ class TouschekCalculator():
 
         return PP, temps, mc_rate_like, integrated_rate
 
+
 class TouschekManager:
     def __init__(self, line, local_momaper, nemitt_x, nemitt_y, sigma_z, sigma_delta, kb, n_part_mc, n_elems=None, fdelta=0.85, nx=3, ny=3, nz=3):
         self.line = line
