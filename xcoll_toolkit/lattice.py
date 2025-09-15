@@ -533,14 +533,8 @@ def install_apertures(line, machine):
         ########################################
         # Apply shifts to chicane apertures
         ########################################
-        names = np.asarray(tab.name, dtype=str)
-        mask_chicane_aper = (
-            (tab.element_type == 'LimitEllipse') & 
-            (np.char.startswith(names, 'bp') | np.char.startswith(names, '-bp'))
-        )
-        chicane_aper_names = tab.rows[mask_chicane_aper].name
-        # chicane_aper_names = ['bp1nrp_aper_entry', 'bp1nrp_aper_exit',
-        #                         '-bp1nrp_aper_entry', '-bp1nrp_aper_exit']
+        subtab = tab.rows['bp2nrp_entry':'-bp2nrp_exit']
+        chicane_aper_names = subtab.rows[subtab.element_type == 'LimitEllipse'].name
 
         for aper_name in chicane_aper_names:
             line[aper_name].shift_x = tw_aper['x', aper_name]
