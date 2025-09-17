@@ -769,4 +769,10 @@ class BeamGasElement(xt.BeamElement):
         
         particles.px[interacting_mask] = px
         particles.py[interacting_mask] = py
-        particles.delta[interacting_mask] = delta
+        
+        # Update the `delta` value of the particles object. `ptau` and `rvv` and
+        # `rpp` are updated accordingly.
+        # Ref: https://github.com/xsuite/xtrack/blob/f45c5720c246f34cd3db593829d83f3b0c61c3b8/xtrack/particles/particles.py#L1130
+        delta_temp = particles.delta.copy()
+        delta_temp[interacting_mask] = delta
+        particles.update_delta(delta_temp)
