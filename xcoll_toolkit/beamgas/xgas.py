@@ -763,12 +763,6 @@ class BeamGasElement(xt.BeamElement):
             'interaction': interactions_list
         }
 
-        if len(interacting_ids) > 0:
-            print('\n')
-            print(f'beam_gas_element: {self.name}')
-            print(f'interacting_ids: {interacting_ids}')
-            print(f'interactions: {interactions}\n')
-
         px, py, delta = self.manager.draw_angles_and_delta(particles.filter(interacting_mask),
                                                             interactions,
                                                             n_interactions)
