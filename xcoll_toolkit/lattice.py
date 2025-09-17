@@ -577,7 +577,8 @@ def install_apertures(line, machine):
             line[nn].a *= np.cos(HALF_XING_RAD_LER)
 
         return line
-    
+
+
 # ===========================================
 # 🔹 Load and process line
 # ===========================================

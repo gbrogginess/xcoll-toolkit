@@ -132,6 +132,9 @@ def run(config_file_path, config_dict):
     # ===========================================
     # 🔹 Perform loss interpolation and make Xcoll loss map
     # ===========================================
+    # NOTE: Switch to linear model for dipole edges
+    #       backtracking in full dipole edges is not implemented yet
+    line.configure_bend_model(edge='linear')
     LossMap = xc.LossMap(line,
                          part=particles,
                          line_is_reversed=False,
