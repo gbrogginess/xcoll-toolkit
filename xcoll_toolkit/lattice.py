@@ -533,7 +533,10 @@ def install_apertures(line, machine):
         ########################################
         # Apply shifts to chicane apertures
         ########################################
-        subtab = tab.rows['bp2nrp_entry':'-bp2nrp_exit']
+        try:
+            subtab = tab.rows['bp2nrp_entry':'-bp2nrp_exit']
+        except KeyError:
+            subtab = tab.rows['s.chicane.nikko':'e.chicane.nikko']
         chicane_aper_names = subtab.rows[subtab.element_type == 'LimitEllipse'].name
 
         for aper_name in chicane_aper_names:
