@@ -13,7 +13,7 @@ from warnings import warn
 
 
 def prepare_lossmap(particles, line, binwidth, weights):
-    lossmap_weights = ['none', 'energy']
+    lossmap_weights = ['none', 'energy', 'touschek']
     if weights not in lossmap_weights:
         raise ValueError('weights must be in [{}]'.format(', '.join(lossmap_weights)))
 
@@ -55,6 +55,8 @@ def prepare_lossmap(particles, line, binwidth, weights):
         part_mass = part_mass_ratio * particles.mass0
         part_tot_energy = np.sqrt(part_mom**2 + part_mass**2)
         histo_weights = part_tot_energy
+    elif weights == 'touschek':
+        histo_weights = particles.weight
     elif weights == 'none':
         histo_weights = np.full_like(particles.x, 1)
     else:
