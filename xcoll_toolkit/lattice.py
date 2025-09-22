@@ -20,7 +20,6 @@ from warnings import warn
 from .config import config
 from .utils import get_particle_info
 from .beamgas import xgas as xg
-from .touschek import xtouschek as xtt
 
 
 # ===========================================
@@ -711,55 +710,7 @@ def load_and_process_line(config_dict):
         s0 = line.get_s_position(at_elements=start_element, mode='upstream')
 
         return line, twiss, ref_part, bgman, start_element, s0
-    
-    elif config.scenario == 'touschek':
-        #########################################
-        # Touschek (via Xtouschek Python module)
-        #########################################
-        touschek_opt = inp['touschek_options']
-
-        seed = run.get('seed') # In sumbit mode seed is the job_id and starts from 1
-        if seed > touschek_opt['n_elems']:
-            raise ValueError(f"Seed {seed} is larger than the number of elements {touschek_opt['n_elems']}.\n \
-                               In the Touschek simulations the seed is used to select one of the Touschek scattering centers.\n \
-                               Please select a seed smaller than {touschek_opt['n_elems']}.")
-        element = f"TMarker_{seed-1}" # Touschek scattering centers are counted from 0
-
-        print('Initialising Touschek manager...')
-        # Initialise Touschek manager
-        local_momaper_fpath = touschek_opt.get('local_momentum_aperture', None)
-        if local_momaper_fpath is not None:
-            import json
-            with open(local_momaper_fpath, 'r') as f:
-                local_momaper = json.load(f)
-        else:
-            local_momaper = None
-
-        touschek_manager = xtt.TouschekManager(line=line,
-                                               local_momaper=local_momaper,
-                                               n_elems=touschek_opt['n_elems'],
-                                               nemitt_x=emittance['x'],
-                                               nemitt_y=emittance['y'],
-                                               sigma_z=beam['sigma_z'],
-                                               sigma_delta=beam['sigma_delta'],
-                                               kb=beam['bunch_population'], 
-                                               n_part_mc=touschek_opt['n_part_mc'],
-                                               fdelta=touschek_opt['fdelta'],
-                                               )
-        print('Done initialising Touschek manager.')
-
-        touschek_manager.initialise_touschek(element=element)
-
-        # TODO: improve this
-        if 'superkekb' in inp['machine']:
-            # Install apertures
-            print('Installing apertures...')
-            line = install_apertures(line, inp['machine'])
-        elif 'dafne' in inp['machine']:
-            insert_missing_bounding_apertures(line, inp['machine'])
-
-        return line, touschek_manager, element
 
     else:
-        raise ValueError(f'Unknown scenario: {config.scenario}. The supported scenarios are: collimation, beamgas, touschek.')
+        raise ValueError(f'Unknown scenario: {config.scenario}. The supported scenarios are: collimation, beamgas.')
 
