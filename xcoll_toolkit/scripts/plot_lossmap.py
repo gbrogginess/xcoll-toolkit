@@ -142,7 +142,7 @@ def plot_lossmap(lossmap_data, figsize,
     # Normalization 'total'
     norm_val = sum(coll_values) + sum(lma['aper_loss'])
 
-    coll_values /= (norm_val * coll_lengths)
+    # coll_values /= (norm_val * coll_lengths)
 
     # There can be an alternative way of plotting using a bar plot
     # Make the correct edges to get the correct width of step plot
@@ -157,7 +157,7 @@ def plot_lossmap(lossmap_data, figsize,
 
     aper_loss = lma['aper_loss'].reindex(range(0, nbins-1), fill_value=0)
 
-    aper_loss /= (norm_val * binwidth)
+    # aper_loss /= (norm_val * binwidth)
 
     # warm_regions = SKEKB_WARM_REGIONS
     # mask_warm = np.array([check_warm_loss(s, warm_regions)

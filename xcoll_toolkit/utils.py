@@ -54,7 +54,7 @@ def save_impacts(output_dir, impacts):
     """Save impacts to a CSV file."""
     fpath = output_dir / 'impacts.csv'
     df_impacts = impacts.to_pandas()
-    df_impacts.to_csv(fpath, index=False)
+    df_impacts.to_parquet(fpath, index=False)
 
 def save_beamgas_log(output_dir, bgman):
     """Save beam-gas log to a JSON file."""
