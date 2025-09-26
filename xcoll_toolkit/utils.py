@@ -52,7 +52,7 @@ def _save_particles_hdf(fpath, particles=None, lossmap_data=None, reduce_particl
             
 def save_impacts(output_dir, impacts):
     """Save impacts to a CSV file."""
-    fpath = output_dir / 'impacts.csv'
+    fpath = output_dir / 'impacts.parquet'
     df_impacts = impacts.to_pandas()
     df_impacts.to_parquet(fpath, index=False)
 
