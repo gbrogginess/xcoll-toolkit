@@ -105,126 +105,94 @@ class CoulombScatteringCalculator:
         self.element_data = ElementData(Z)
         self.ekin = _energy_from_momentum(p0c) - ELECTRON_MASS_EV
 
+        etot = self.ekin + ELECTRON_MASS_EV
+        self.gamma = etot / ELECTRON_MASS_EV
+        self.beta = np.sqrt(1.0 - 1.0 / (self.gamma**2))
+
+        # Thomas–Fermi radius
+        self.a_TF = C_TF * BOHR_RADIUS * self.Z**(-1/3)
+
+        # small guard factor (Geant4-style) for rejection step
+        self._gmax = 1.0 + 2e-4 * (self.Z**2)
+
+
+    def _screening_As(self):
+        # Screening parameter (Moliere, 1947)
+        return (HBAR * C_LIGHT / (2.0 * self.p0c * self.a_TF))**2 * \
+               (1.13 + 3.76 * (ALPHA * self.Z / self.beta)**2)
+
+
+    def _mf_ratio(self, theta):
+        # McKinley and Fesbach Mott-to-Rutherford ratio
+        s = np.sin(theta * 0.5)
+
+        return 1.0 - (self.beta**2) * (s**2) - self.q0 * self.Z * ALPHA * self.beta * np.pi * s * (1.0 - s)
+
 
     def _compute_dxsec(self, theta):
-        # Wenztel-Mott differential cross section
-        # Wentzel correction accounts for the screening of the nuclear charge by atomic electrons
-        # Mott correction accounts for the magnetic moment interaction between e+/e- and target nucleus
-        etot = self.ekin + ELECTRON_MASS_EV
-        gamma = etot / ELECTRON_MASS_EV
-        beta = np.sqrt(1 - gamma**-2)
-        # Thomas-Fermi radius
-        a_TF = C_TF * BOHR_RADIUS * self.Z**(-1/3)
-        # Rutherford differential cross section
-        dxsec_rutherford = self.Z**2 * CLASSICAL_ELECTRON_RADIUS**2 / 4 * beta**-4 * gamma**-2 * np.sin(theta/2)**-4
-        # McKinley and Fesbach Mott-to_rutherford ratio
-        R_McF = 1 - beta**2 * np.sin(theta/2)**2 - self.q0*self.Z*ALPHA*beta*np.pi*np.sin(theta/2)*(1-np.sin(theta/2))
+        # Wenztel-Mott differential cross section (no nuclear form factor)
+        # Rutherford prefactor (LAB, infinite target mass)
+        s_half = np.sin(theta * 0.5)
+        dxsec_rutherford = (self.Z**2) * CLASSICAL_ELECTRON_RADIUS**2 / 4.0 \
+                           * (self.beta**-4) * (self.gamma**-2) * (s_half**-4)
+
+        # McKinley and Fesbach Mott-to-Rutherford ratio
+        R_McF = self._mf_ratio(theta)
+
         # Screening parameter (Moliere, 1947)
-        As = (HBAR*C_LIGHT / (2*self.p0c*a_TF))**2 * (1.13 + 3.76*(ALPHA*self.Z/beta)**2)
-    
-        screening_factor = np.sin(theta/2)**2 / (As + np.sin(theta/2)**2)
+        As = self._screening_As()
+        screening_factor = (s_half**2) / (As + s_half**2)
 
-        dxsec = dxsec_rutherford * R_McF * screening_factor**2
+        dxsec = dxsec_rutherford * R_McF * (screening_factor**2)
 
-        return dxsec * 2*np.pi*np.sin(theta)
+        return dxsec * 2.0*np.pi*np.sin(theta)
 
-
-    # def _find_max_dxsec(self):
-    #     from scipy.optimize import minimize_scalar
-    #     # Define the function for optimization
-    #     def neg_dxsec(theta):
-    #         return -self._compute_dxsec(theta)  # Multiply by -1 to use minimization for maximization
-
-    #     # Use scalar minimization within the bounds, passing theta as the variable to optimize
-    #     result = minimize_scalar(neg_dxsec, bounds=self.theta_lim, method='bounded')
-        
-    #     # The maximum dxsec value is the negative of the minimized result
-    #     max_dxsec = -result.fun
-
-    #     return max_dxsec
-
-
-    # def _sample_theta(self, n):
-    #     max_dxsec = self._find_max_dxsec()
-    #     theta_proposed = np.random.uniform(self.theta_lim[0], self.theta_lim[1], size=n)
-    #     dxsec_values = self._compute_dxsec(theta_proposed)
-    #     rndm = np.random.uniform(0, max_dxsec, size=n)
-    #     accepted_theta = theta_proposed[rndm < dxsec_values]
-
-    #     while len(accepted_theta) < n:
-    #         theta_proposed = np.random.uniform(self.theta_lim[0], self.theta_lim[1], size=n-len(accepted_theta))
-    #         dxsec_values = self._compute_dxsec(theta_proposed)
-    #         rndm = np.random.uniform(0, max_dxsec, size=n-len(accepted_theta))
-    #         accepted_theta = np.concatenate((accepted_theta, theta_proposed[rndm < dxsec_values]))
-
-    #     return accepted_theta[:n]
 
     def _sample_theta(self, n):
-        # Lab kinematics, infinite target mass
-        etot = self.ekin + ELECTRON_MASS_EV
-        p = self.p0c
-        gamma = etot / ELECTRON_MASS_EV
-        beta = np.sqrt(1.0 - 1.0/gamma**2)
+        # screening parameter (constant over θ for fixed beam/target)
+        As = self._screening_As()
 
-        a_TF = 0.88534 * BOHR_RADIUS * self.Z**(-1/3)
-        As = (HBAR * C_LIGHT / (2.0 * p * a_TF))**2 * (1.13 + 3.76 * (ALPHA*self.Z/beta)**2)
-
-        # limiti in z = 1 - cos(theta)
+        # limits in z = 1 - cosθ
         z1 = 1.0 - np.cos(self.theta_lim[0])
         z2 = 1.0 - np.cos(self.theta_lim[1])
 
         def sample_z(nleft):
             u = np.random.random(nleft)
-            a_lo = 1.0/(2*As + z1)
-            a_hi = 1.0/(2*As + z2)
-            inv = a_lo - u*(a_lo - a_hi)    # = 1/(2As + z)
-            return (1.0/inv) - 2*As
+            a_lo = 1.0 / (2.0 * As + z1)
+            a_hi = 1.0 / (2.0 * As + z2)
+            inv = a_lo - u * (a_lo - a_hi)  # = 1 / (2 As + z)
+            return (1.0 / inv) - 2.0 * As
 
-        gmax = 1.0 + 2e-4 * self.Z * self.Z  # guard factor stile Geant4
         out = []
         while len(out) < n:
             z = sample_z(n - len(out))
             theta = np.arccos(1.0 - z)
-            s = np.sin(theta/2.0)
-            R_McF = 1.0 - beta**2 * s**2 - self.q0 * self.Z * ALPHA * beta * np.pi * s * (1.0 - s)
-            R_McF = np.clip(R_McF, 0.0, None)
-            accept = np.random.random(len(theta)) < (R_McF / gmax)
-            out.extend(theta[accept])
+            # rejection on MF only
+            acc = np.random.random(theta.size) < (self._mf_ratio(theta) / self._gmax)
+            if np.any(acc):
+                out.extend(theta[acc])
+
         return np.array(out[:n])
 
 
-
     def sample_deflections(self, particles, n):
-        phi = np.random.uniform(0, 2*np.pi, n)
+        phi = np.random.uniform(0.0, 2.0*np.pi, n)
         theta = self._sample_theta(n)
 
-        sintheta = np.sin(theta)
-        costheta = np.cos(theta)
+        sintheta = np.sin(theta); costheta = np.cos(theta)
+        sinphi = np.sin(phi);     cosphi = np.cos(phi)
 
-        sinphi = np.sin(phi)
-        cosphi = np.cos(phi)
-
-        pz = np.sqrt((1 + particles.delta)**2 - particles.px**2 - particles.py**2)
+        pz = np.sqrt((1.0 + particles.delta)**2 - particles.px**2 - particles.py**2)
         PP = np.column_stack((particles.px, particles.py, pz))
-        norms = np.linalg.norm(PP, axis=1, keepdims=True) # This is equivalent to 1 + particles.delta
+        norms = np.linalg.norm(PP, axis=1, keepdims=True)
         PP_HAT = PP / norms
 
         UU_HAT = np.zeros_like(PP_HAT)
-
         tol = 1e-12
         mask = (PP_HAT[:, 0]**2 + PP_HAT[:, 1]**2) < tol**2
 
-        # General case
-        UU_HAT[~mask] = np.stack([
-            -PP_HAT[~mask, 1],
-            PP_HAT[~mask, 0],
-            np.zeros_like(PP_HAT[~mask, 0])
-        ], axis=1)
-
-        # If momentum can be considered purely longitudinal
-        UU_HAT[mask] = np.tile(np.array([1.0, 0.0, 0.0]), (mask.sum(), 1))
-
-        # Normalize U_HAT 
+        UU_HAT[~mask] = np.stack([-PP_HAT[~mask, 1], PP_HAT[~mask, 0], np.zeros_like(PP_HAT[~mask, 0])], axis=1)
+        UU_HAT[mask] = np.array([1.0, 0.0, 0.0])
         UU_HAT /= np.linalg.norm(UU_HAT, axis=1, keepdims=True)
 
         VV_HAT = np.cross(PP_HAT, UU_HAT)
@@ -234,21 +202,13 @@ class CoulombScatteringCalculator:
             sintheta[:, None] * sinphi[:, None] * VV_HAT +
             costheta[:, None] * PP_HAT
         )
-
         PP_OUT = scattered_dir * norms
-
         return PP_OUT[:, 0].tolist(), PP_OUT[:, 1].tolist()
 
 
     def compute_xsec(self):
         from scipy.integrate import quad
-        def dxsec(theta):
-            return self._compute_dxsec(theta)
-
-        # Perform the integration
-        xsec, error = quad(dxsec, self.theta_lim[0], self.theta_lim[1])
-        
-        return xsec
+        return quad(self._compute_dxsec, self.theta_lim[0], self.theta_lim[1])[0]
 
 
 class BremsstrahlungCalculator:
