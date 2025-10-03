@@ -7,13 +7,14 @@ Date:   12-03-2025
 """
 import numpy as np
 import pandas as pd
+import xtrack as xt
 import xpart as xp
 import xcoll as xc
 from warnings import warn
 
 
 def prepare_lossmap(particles, line, binwidth, weights):
-    lossmap_weights = ['none', 'energy', 'touschek']
+    lossmap_weights = ['none', 'energy', 'touschek', 'touschek_power']
     if weights not in lossmap_weights:
         raise ValueError('weights must be in [{}]'.format(', '.join(lossmap_weights)))
 
@@ -31,6 +32,10 @@ def prepare_lossmap(particles, line, binwidth, weights):
     # Ignore unallocated array slots
     mask_allocated = particles.state > -9999
     particles = particles.filter(mask_allocated)
+
+    if weights == 'touschek' or weights == 'touschek_power':
+        # Remove secondaries: they do not have an associate loss rate
+        particles = particles.filter(particles.parent_particle_id == particles.particle_id)
 
     # Count the number of primary particles for information
     mask_prim = particles.parent_particle_id == particles.particle_id
@@ -57,6 +62,12 @@ def prepare_lossmap(particles, line, binwidth, weights):
         histo_weights = part_tot_energy
     elif weights == 'touschek':
         histo_weights = particles.weight
+    elif weights == 'touschek_power':
+        part_mass = xt.particles.pdg.get_mass_from_pdg_id(particles.pdg_id)
+        part_mass_ratio = part_mass / particles.mass0
+        part_mom = part_mass_ratio * (1 + particles.delta) * particles.p0c
+        part_tot_energy = np.sqrt(part_mom**2 + part_mass**2)
+        histo_weights = particles.weight * part_tot_energy
     elif weights == 'none':
         histo_weights = np.full_like(particles.x, 1)
     else:
