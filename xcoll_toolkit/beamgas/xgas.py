@@ -118,7 +118,7 @@ class CoulombScatteringCalculator:
         # Rutherford differential cross section
         dxsec_rutherford = self.Z**2 * CLASSICAL_ELECTRON_RADIUS**2 / 4 * beta**-4 * gamma**-2 * np.sin(theta/2)**-4
         # McKinley and Fesbach Mott-to_rutherford ratio
-        R_McF = 1 - beta**2 * np.sin(theta/2)**2 - self.q0*ALPHA*beta*np.pi*np.sin(theta/2)*(1-np.sin(theta/2))
+        R_McF = 1 - beta**2 * np.sin(theta/2)**2 - self.q0*self.Z*ALPHA*beta*np.pi*np.sin(theta/2)*(1-np.sin(theta/2))
         # Screening parameter (Moliere, 1947)
         As = (HBAR*C_LIGHT / (2*self.p0c*a_TF))**2 * (1.13 + 3.76*(ALPHA*self.Z/beta)**2)
     
@@ -129,35 +129,69 @@ class CoulombScatteringCalculator:
         return dxsec * 2*np.pi*np.sin(theta)
 
 
-    def _find_max_dxsec(self):
-        from scipy.optimize import minimize_scalar
-        # Define the function for optimization
-        def neg_dxsec(theta):
-            return -self._compute_dxsec(theta)  # Multiply by -1 to use minimization for maximization
+    # def _find_max_dxsec(self):
+    #     from scipy.optimize import minimize_scalar
+    #     # Define the function for optimization
+    #     def neg_dxsec(theta):
+    #         return -self._compute_dxsec(theta)  # Multiply by -1 to use minimization for maximization
 
-        # Use scalar minimization within the bounds, passing theta as the variable to optimize
-        result = minimize_scalar(neg_dxsec, bounds=self.theta_lim, method='bounded')
+    #     # Use scalar minimization within the bounds, passing theta as the variable to optimize
+    #     result = minimize_scalar(neg_dxsec, bounds=self.theta_lim, method='bounded')
         
-        # The maximum dxsec value is the negative of the minimized result
-        max_dxsec = -result.fun
+    #     # The maximum dxsec value is the negative of the minimized result
+    #     max_dxsec = -result.fun
 
-        return max_dxsec
+    #     return max_dxsec
 
+
+    # def _sample_theta(self, n):
+    #     max_dxsec = self._find_max_dxsec()
+    #     theta_proposed = np.random.uniform(self.theta_lim[0], self.theta_lim[1], size=n)
+    #     dxsec_values = self._compute_dxsec(theta_proposed)
+    #     rndm = np.random.uniform(0, max_dxsec, size=n)
+    #     accepted_theta = theta_proposed[rndm < dxsec_values]
+
+    #     while len(accepted_theta) < n:
+    #         theta_proposed = np.random.uniform(self.theta_lim[0], self.theta_lim[1], size=n-len(accepted_theta))
+    #         dxsec_values = self._compute_dxsec(theta_proposed)
+    #         rndm = np.random.uniform(0, max_dxsec, size=n-len(accepted_theta))
+    #         accepted_theta = np.concatenate((accepted_theta, theta_proposed[rndm < dxsec_values]))
+
+    #     return accepted_theta[:n]
 
     def _sample_theta(self, n):
-        max_dxsec = self._find_max_dxsec()
-        theta_proposed = np.random.uniform(self.theta_lim[0], self.theta_lim[1], size=n)
-        dxsec_values = self._compute_dxsec(theta_proposed)
-        rndm = np.random.uniform(0, max_dxsec, size=n)
-        accepted_theta = theta_proposed[rndm < dxsec_values]
+        # Lab kinematics, infinite target mass
+        etot = self.ekin + ELECTRON_MASS_EV
+        p = self.p0c
+        gamma = etot / ELECTRON_MASS_EV
+        beta = np.sqrt(1.0 - 1.0/gamma**2)
 
-        while len(accepted_theta) < n:
-            theta_proposed = np.random.uniform(self.theta_lim[0], self.theta_lim[1], size=n-len(accepted_theta))
-            dxsec_values = self._compute_dxsec(theta_proposed)
-            rndm = np.random.uniform(0, max_dxsec, size=n-len(accepted_theta))
-            accepted_theta = np.concatenate((accepted_theta, theta_proposed[rndm < dxsec_values]))
+        a_TF = 0.88534 * BOHR_RADIUS * self.Z**(-1/3)
+        As = (HBAR * C_LIGHT / (2.0 * p * a_TF))**2 * (1.13 + 3.76 * (ALPHA*self.Z/beta)**2)
 
-        return accepted_theta[:n]
+        # limiti in z = 1 - cos(theta)
+        z1 = 1.0 - np.cos(self.theta_lim[0])
+        z2 = 1.0 - np.cos(self.theta_lim[1])
+
+        def sample_z(nleft):
+            u = np.random.random(nleft)
+            a_lo = 1.0/(2*As + z1)
+            a_hi = 1.0/(2*As + z2)
+            inv = a_lo - u*(a_lo - a_hi)    # = 1/(2As + z)
+            return (1.0/inv) - 2*As
+
+        gmax = 1.0 + 2e-4 * self.Z * self.Z  # guard factor stile Geant4
+        out = []
+        while len(out) < n:
+            z = sample_z(n - len(out))
+            theta = np.arccos(1.0 - z)
+            s = np.sin(theta/2.0)
+            R_McF = 1.0 - beta**2 * s**2 - self.q0 * self.Z * ALPHA * beta * np.pi * s * (1.0 - s)
+            R_McF = np.clip(R_McF, 0.0, None)
+            accept = np.random.random(len(theta)) < (R_McF / gmax)
+            out.extend(theta[accept])
+        return np.array(out[:n])
+
 
 
     def sample_deflections(self, particles, n):
