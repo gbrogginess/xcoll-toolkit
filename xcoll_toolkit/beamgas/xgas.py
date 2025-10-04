@@ -47,8 +47,9 @@ def _atomic_number_from_symbol(element_symbol):
 class ElementData:
     def __init__(self, Z):
         self.Z = Z
-        self.A = 2*Z
+        self.A = Z*2 if Z != 1 else 1
         self.mass = pt.elements[Z].mass * ATOMIC_MASS_CONSTANT_EV
+        self.nuclear_radius = 1.27e-15 * self.A**0.27
         self.f_el, self.f_inel = self._compute_radiation_logarithms()
         self.f_c = self._compute_Coulomb_factor()
         self.f_Z_factor_1, self.f_Z_factor_2, self.f_Z = self._compute_Z_factors()
@@ -115,6 +116,10 @@ class CoulombScatteringCalculator:
         # small guard factor (Geant4-style) for rejection step
         self._gmax = 1.0 + 2e-4 * (self.Z**2)
 
+        num = 2*self.element_data.mass * self.ekin * (self.ekin + 2*ELECTRON_MASS_EV)
+        den = ELECTRON_MASS_EV**2 + self.element_data.mass**2 + 2*self.element_data.mass*etot
+        self.tmax = num / den
+
 
     def _screening_As(self):
         # Screening parameter (Moliere, 1947)
@@ -127,6 +132,18 @@ class CoulombScatteringCalculator:
         s = np.sin(theta * 0.5)
 
         return 1.0 - (self.beta**2) * (s**2) - self.q0 * self.Z * ALPHA * self.beta * np.pi * s * (1.0 - s)
+    
+
+    def _exp_form_factor(self, theta):
+        # From G4ScreeningMottCrossSection::FormFactor2ExpHof
+        s2 = np.sin(theta * 0.5) ** 2
+        t = self.tmax * s2
+        q2 = (t * (t + 2.0 * self.element_data.mass)) * (HBAR*C_LIGHT)**-2
+        xN = self.element_data.nuclear_radius**2 * q2
+        den = 1.0 + xN / 12.0
+        FN = 1.0 / den
+
+        return FN*FN
 
 
     def _compute_dxsec(self, theta):
@@ -143,7 +160,10 @@ class CoulombScatteringCalculator:
         As = self._screening_As()
         screening_factor = (s_half**2) / (As + s_half**2)
 
-        dxsec = dxsec_rutherford * R_McF * (screening_factor**2)
+        # Nuclear form factor 
+        F2 = self._exp_form_factor(theta)
+
+        dxsec = dxsec_rutherford * R_McF * (screening_factor**2) * F2
 
         return dxsec * 2.0*np.pi*np.sin(theta)
 
