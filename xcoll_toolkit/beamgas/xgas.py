@@ -367,7 +367,7 @@ class BremsstrahlungCalculator:
 
     
     def _compute_screening_functions(self, gamma, epsilon):
-        phi1 = 16.863 - 2 * np.log(1 + 0.311877 * gamma ** 2) + 2.4 * np.exp(-0.9 * gamma)
+        phi1 = 16.863 - 2 * np.log(1 + 0.311877 * gamma ** 2) + 2.4 * np.exp(-0.9 * gamma) + 1.6 * np.exp(-1.5*gamma)
         phi1m2 = 2 / (3 + 19.5 * gamma + 18 * gamma ** 2)
         psi1 = 24.34 - 2 * np.log(1 + 13.111641 * epsilon ** 2) + 2.8 * np.exp(-8 * epsilon) + 1.2 * np.exp(-29.2 * epsilon)
         psi1m2 = 2 / (3 + 120 * epsilon + 1200 * epsilon ** 2)
